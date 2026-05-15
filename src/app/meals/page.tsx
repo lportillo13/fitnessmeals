@@ -168,6 +168,31 @@ export default function MealsPage() {
       }
     }
 
+    for (const food of jazminPlanFoods) {
+      const existingFood = (existingFoods || []).find((item) => item.name === food.name);
+      if (!existingFood) continue;
+
+      const { error } = await supabase
+        .from("foods")
+        .update({
+          serving_mode: food.serving_mode,
+          serving_label: food.serving_label,
+          base_grams: food.base_grams,
+          calories: food.calories,
+          protein_g: food.protein_g,
+          carbs_g: food.carbs_g,
+          fat_g: food.fat_g,
+          fiber_g: food.fiber_g,
+        })
+        .eq("id", existingFood.id);
+
+      if (error) {
+        setMessage(error.message);
+        setIsImporting(false);
+        return;
+      }
+    }
+
     const { data: refreshedFoods, error: refreshedFoodsError } = await supabase
       .from("foods")
       .select("*")

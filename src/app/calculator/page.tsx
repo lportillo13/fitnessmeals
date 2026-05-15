@@ -468,38 +468,6 @@ export default function CalculatorPage() {
               />
             </div>
 
-            <p className="muted mt-2 text-sm">
-              {selectedFood?.serving_mode === "grams"
-                ? "Amount means grams."
-                : "Amount means number of units."}
-            </p>
-
-            <button
-              onClick={addFood}
-              className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black shadow-[0_0_24px_rgba(124,255,79,0.35)]"
-            >
-              <Plus className="h-4 w-4" />
-              Add Food
-            </button>
-
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button
-                onClick={saveDay}
-                disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-5 py-3 font-semibold text-white transition hover:bg-white/12 disabled:opacity-60"
-              >
-                <Save className="h-4 w-4" />
-                {isSaving ? "Saving..." : "Save Day"}
-              </button>
-              <span className="muted text-sm">
-                {selectedProfile
-                  ? hasLoadedDatabaseMeals
-                    ? saveMessage
-                    : "Loading today's meals..."
-                  : "Choose a profile to save daily logs."}
-              </span>
-            </div>
-
             <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
               <select
                 className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
@@ -519,6 +487,37 @@ export default function CalculatorPage() {
               >
                 Add Meal
               </button>
+            </div>
+
+            <p className="muted mt-2 text-sm">
+              {selectedFood?.serving_mode === "grams"
+                ? "Amount means grams."
+                : "Amount means number of units."}
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                onClick={addFood}
+                className="inline-flex items-center gap-2 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black shadow-[0_0_24px_rgba(124,255,79,0.35)]"
+              >
+                <Plus className="h-4 w-4" />
+                Add Food
+              </button>
+              <button
+                onClick={saveDay}
+                disabled={isSaving}
+                className="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-5 py-3 font-semibold text-white transition hover:bg-white/12 disabled:opacity-60"
+              >
+                <Save className="h-4 w-4" />
+                {isSaving ? "Saving..." : "Save Day"}
+              </button>
+              <span className="muted text-sm">
+                {selectedProfile
+                  ? hasLoadedDatabaseMeals
+                    ? saveMessage
+                    : "Loading today's meals..."
+                  : "Choose a profile to save daily logs."}
+              </span>
             </div>
           </div>
 
