@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Food, MealTemplate, MealTemplateItem, Profile } from "@/lib/types";
+import { jazminMealTemplates, jazminPlanFoods } from "@/lib/jazminPlan";
 
 type DraftItem = {
   foodId: string;
@@ -21,6 +22,7 @@ export default function MealsPage() {
   const [selectedFoodId, setSelectedFoodId] = useState("");
   const [amount, setAmount] = useState(1);
   const [message, setMessage] = useState("");
+  const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
     async function loadInitialData() {
@@ -124,6 +126,106 @@ export default function MealsPage() {
     setMessage("Meal template saved.");
   }
 
+  async function importJazminPlan() {
+    if (!selectedProfileId) {
+      setMessage("Choose Jazmin's profile first.");
+      return;
+    }
+
+    setIsImporting(true);
+    setMessage("");
+    const supabase = createClient();
+
+    const { data: existingFoods, error: foodsError } = await supabase
+      .from("foods")
+      .select("*")
+      .in(
+        "name",
+        jazminPlanFoods.map((food) => food.name)
+      );
+
+    if (foodsError) {
+      setMessage(foodsError.message);
+      setIsImporting(false);
+      return;
+    }
+
+    const existingFoodNames = new Set((existingFoods || []).map((food) => food.name));
+    const foodsToInsert = jazminPlanFoods
+      .filter((food) => !existingFoodNames.has(food.name))
+      .map((food) => ({
+        ...food,
+        user_id: null,
+        is_public: true,
+      }));
+
+    if (foodsToInsert.length > 0) {
+      const { error } = await supabase.from("foods").insert(foodsToInsert);
+      if (error) {
+        setMessage(error.message);
+        setIsImporting(false);
+        return;
+      }
+    }
+
+    const { data: refreshedFoods, error: refreshedFoodsError } = await supabase
+      .from("foods")
+      .select("*")
+      .in(
+        "name",
+        jazminPlanFoods.map((food) => food.name)
+      );
+
+    if (refreshedFoodsError) {
+      setMessage(refreshedFoodsError.message);
+      setIsImporting(false);
+      return;
+    }
+
+    const foodByName = new Map((refreshedFoods || []).map((food) => [food.name, food]));
+
+    for (const template of jazminMealTemplates) {
+      const { data: existingTemplate } = await supabase
+        .from("meal_templates")
+        .select("id")
+        .eq("profile_id", selectedProfileId)
+        .eq("name", template.name)
+        .maybeSingle();
+
+      if (existingTemplate) continue;
+
+      const { data: createdTemplate, error: templateError } = await supabase
+        .from("meal_templates")
+        .insert({ profile_id: selectedProfileId, name: template.name })
+        .select()
+        .single();
+
+      if (templateError) {
+        setMessage(templateError.message);
+        setIsImporting(false);
+        return;
+      }
+
+      const rows = template.items.map(([foodName, itemAmount]) => ({
+        meal_template_id: createdTemplate.id,
+        food_id: foodByName.get(foodName)?.id,
+        amount: itemAmount,
+      }));
+
+      const { error: itemError } = await supabase.from("meal_template_items").insert(rows);
+      if (itemError) {
+        setMessage(itemError.message);
+        setIsImporting(false);
+        return;
+      }
+    }
+
+    setMessage("Jazmin's monthly plan was imported as saved meals.");
+    setIsImporting(false);
+    const { data } = await supabase.from("meal_templates").select("*").eq("profile_id", selectedProfileId).order("name");
+    setTemplates((data || []) as MealTemplate[]);
+  }
+
   return (
     <main className="app-shell">
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[1fr_340px]">
@@ -218,6 +320,13 @@ export default function MealsPage() {
           >
             <Save className="h-4 w-4" />
             Save Meal
+          </button>
+          <button
+            onClick={importJazminPlan}
+            disabled={isImporting}
+            className="ml-3 mt-4 inline-flex items-center gap-2 rounded-2xl bg-white/8 px-5 py-3 font-semibold disabled:opacity-60"
+          >
+            {isImporting ? "Importing..." : "Import Jazmin Plan"}
           </button>
           {message && <p className="muted mt-3 text-sm">{message}</p>}
         </section>
