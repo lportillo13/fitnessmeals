@@ -265,6 +265,14 @@ export default function CalculatorPage() {
     setSelectedFoods((current) => current.filter((_, i) => i !== index));
   }
 
+  function updateItemAmount(index: number, nextAmount: number) {
+    setSelectedFoods((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, amount: nextAmount } : item
+      )
+    );
+  }
+
   async function addSavedMeal() {
     if (!selectedTemplateId) return;
 
@@ -535,10 +543,19 @@ export default function CalculatorPage() {
                         >
                           <div>
                             <div className="font-medium">{item.food.name}</div>
-                            <div className="muted text-sm">
-                              {item.amount}{" "}
-                              {item.food.serving_mode === "grams" ? "g" : "unit(s)"}
-                            </div>
+                            <label className="muted mt-2 flex items-center gap-2 text-sm">
+                              <input
+                                className="w-24 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white"
+                                type="number"
+                                min="0"
+                                step={item.food.serving_mode === "grams" ? "5" : "0.5"}
+                                value={item.amount}
+                                onChange={(event) =>
+                                  updateItemAmount(item.index, Number(event.target.value))
+                                }
+                              />
+                              <span>{item.food.serving_mode === "grams" ? "g" : "unit(s)"}</span>
+                            </label>
                           </div>
 
                           <button
