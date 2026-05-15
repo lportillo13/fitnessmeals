@@ -432,8 +432,14 @@ export default function CalculatorPage() {
           </div>
         </section>
 
-        <aside className="order-1 space-y-4 lg:order-2">
+        <div className="order-1 lg:hidden">
           <MacroSummary totals={totals} targets={targets} />
+        </div>
+
+        <aside className="order-3 space-y-4 lg:order-2">
+          <div className="hidden lg:block">
+            <MacroSummary totals={totals} targets={targets} />
+          </div>
 
           <div className="surface rounded-3xl p-5">
             <div className="mb-4 flex items-center gap-3">

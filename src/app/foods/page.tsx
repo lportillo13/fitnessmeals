@@ -8,6 +8,7 @@ import type { Food } from "@/lib/types";
 export default function FoodsPage() {
   const [foods, setFoods] = useState<Food[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     async function loadFoods() {
@@ -34,6 +35,12 @@ export default function FoodsPage() {
     return <main className="app-shell">Loading foods...</main>;
   }
 
+  const filteredFoods = foods.filter((food) =>
+    `${food.name} ${food.brand || ""} ${food.category}`
+      .toLowerCase()
+      .includes(search.toLowerCase())
+  );
+
   return (
     <main className="app-shell">
       <div className="mx-auto max-w-6xl">
@@ -42,6 +49,13 @@ export default function FoodsPage() {
           <Apple className="h-8 w-8 text-lime-300" />
           Food Database
         </h1>
+
+        <input
+          className="surface mb-4 w-full rounded-2xl p-3 text-white outline-none md:max-w-md"
+          placeholder="Search foods"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
 
         <div className="surface overflow-x-auto rounded-3xl">
           <table className="w-full text-sm">
@@ -57,7 +71,7 @@ export default function FoodsPage() {
               </tr>
             </thead>
             <tbody>
-              {foods.map((food) => (
+              {filteredFoods.map((food) => (
                 <tr key={food.id} className="border-t border-white/8">
                   <td className="p-3 font-medium">{food.name}</td>
                   <td className="p-3">{food.serving_label}</td>
