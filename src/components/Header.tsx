@@ -26,7 +26,7 @@ export default function Header() {
             <span className="grid h-10 w-10 place-items-center rounded-2xl bg-lime-300 text-black shadow-[0_0_24px_rgba(124,255,79,0.45)]">
               <Dumbbell className="h-5 w-5" />
             </span>
-            <span>Meal Calculator</span>
+            <span>PJ Meal Calculator</span>
           </Link>
 
           <button
