@@ -97,6 +97,14 @@ export default function CalculatorPage() {
     }
 
     loadProfiles();
+
+    function handleProfileChange() {
+      const rememberedProfileId = window.localStorage.getItem("selected-profile-id") || "";
+      setSelectedProfileId(rememberedProfileId);
+    }
+
+    window.addEventListener("selected-profile-changed", handleProfileChange);
+    return () => window.removeEventListener("selected-profile-changed", handleProfileChange);
   }, []);
 
   useEffect(() => {

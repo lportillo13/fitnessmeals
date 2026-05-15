@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Apple, Dumbbell, Flame, House, Menu, Repeat2, UserRound, X } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import type { Profile } from "@/lib/types";
 
 const navItems = [
   { label: "Home", href: "/", icon: House },
@@ -17,6 +19,30 @@ const navItems = [
 export default function Header() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState("");
+
+  useEffect(() => {
+    async function loadProfiles() {
+      const { data } = await createClient().from("meal_profiles").select("*").order("name");
+      const loadedProfiles = (data || []) as Profile[];
+      setProfiles(loadedProfiles);
+      const rememberedProfileId = window.localStorage.getItem("selected-profile-id");
+      const nextProfileId =
+        loadedProfiles.find((profile) => profile.id === rememberedProfileId)?.id ||
+        loadedProfiles[0]?.id ||
+        "";
+      setSelectedProfileId(nextProfileId);
+    }
+
+    loadProfiles();
+  }, []);
+
+  function changeProfile(profileId: string) {
+    setSelectedProfileId(profileId);
+    window.localStorage.setItem("selected-profile-id", profileId);
+    window.dispatchEvent(new Event("selected-profile-changed"));
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-black/35 backdrop-blur-xl">
@@ -64,6 +90,20 @@ export default function Header() {
               </Link>
             );
           })}
+
+          {profiles.length > 0 && (
+            <select
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white"
+              value={selectedProfileId}
+              onChange={(event) => changeProfile(event.target.value)}
+            >
+              {profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+          )}
         </nav>
       </div>
     </header>

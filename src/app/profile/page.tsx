@@ -85,6 +85,7 @@ export default function ProfilePage() {
       goalDate: profile.goal_date,
     });
     window.localStorage.setItem("selected-profile-id", profile.id);
+    window.dispatchEvent(new Event("selected-profile-changed"));
     if (announce) {
       setMessage(`${profile.name}'s profile loaded.`);
     }
@@ -120,6 +121,7 @@ export default function ProfilePage() {
 
     const saved = data as Profile;
     window.localStorage.setItem("selected-profile-id", saved.id);
+    window.dispatchEvent(new Event("selected-profile-changed"));
     setForm((current) => ({ ...current, id: saved.id }));
     setMessage(`${saved.name}'s profile saved.`);
     await loadProfiles();

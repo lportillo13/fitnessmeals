@@ -1,6 +1,11 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Apple, ArrowRight, Dumbbell, Flame, Repeat2, UserRound } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import type { Profile } from "@/lib/types";
 
 const cards = [
   { title: "Daily Calculator", description: "Build meals and track macros.", href: "/calculator", icon: Dumbbell },
@@ -11,6 +16,27 @@ const cards = [
 ];
 
 export default function HomePage() {
+  const [profile, setProfile] = useState<Profile | null>(null);
+
+  useEffect(() => {
+    async function loadSelectedProfile() {
+      const selectedProfileId = window.localStorage.getItem("selected-profile-id");
+      if (!selectedProfileId) return;
+
+      const { data } = await createClient()
+        .from("meal_profiles")
+        .select("*")
+        .eq("id", selectedProfileId)
+        .single();
+
+      setProfile((data as Profile) || null);
+    }
+
+    loadSelectedProfile();
+    window.addEventListener("selected-profile-changed", loadSelectedProfile);
+    return () => window.removeEventListener("selected-profile-changed", loadSelectedProfile);
+  }, []);
+
   return (
     <main className="app-shell">
       <div className="mx-auto max-w-6xl">
@@ -21,7 +47,9 @@ export default function HomePage() {
                 Cut cleaner. Eat smarter. Stay on target.
               </h1>
               <div className="mt-5 inline-flex rounded-full border border-lime-300/20 bg-lime-300/10 px-4 py-2 text-sm text-lime-100">
-                Jazmin, you are stronger than you think — one good choice at a time. 💚
+                {profile
+                  ? `${profile.name}, you are stronger than you think — one good choice at a time. 💚`
+                  : "One good choice at a time. 💚"}
               </div>
             </div>
 
@@ -37,8 +65,8 @@ export default function HomePage() {
                 />
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
-                <Stat label="Protein target" value="130g" />
-                <Stat label="Calories" value="1500" />
+                <Stat label="Protein target" value={`${profile?.protein_target ?? 130}g`} />
+                <Stat label="Calories" value={`${profile?.calorie_target ?? 1500}`} />
                 <Stat label="Window" value="10am–8pm" />
               </div>
             </div>
