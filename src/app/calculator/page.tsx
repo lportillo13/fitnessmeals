@@ -276,7 +276,7 @@ export default function CalculatorPage() {
   return (
     <main className="app-shell">
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[1fr_380px]">
-        <section>
+        <section className="order-2 lg:order-1">
           <p className="eyebrow mb-2 text-xs font-semibold">Fuel builder</p>
           <h1 className="mb-4 text-4xl font-bold">Daily Meal Calculator</h1>
 
@@ -432,7 +432,7 @@ export default function CalculatorPage() {
           </div>
         </section>
 
-        <aside className="space-y-4">
+        <aside className="order-1 space-y-4 lg:order-2">
           <MacroSummary totals={totals} targets={targets} />
 
           <div className="surface rounded-3xl p-5">
