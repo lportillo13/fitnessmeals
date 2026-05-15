@@ -1,8 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #05070b;
+  --foreground: #f5f7ff;
+  --muted: #9ca7bf;
+  --panel: rgba(16, 21, 34, 0.9);
+  --panel-strong: rgba(22, 28, 44, 0.98);
+  --line: rgba(255, 255, 255, 0.11);
+  --neon: #7cff4f;
+  --neon-alt: #18d7ff;
+  --violet: #a855f7;
 }
 
 @theme inline {
@@ -12,15 +19,62 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  background-image:
+    radial-gradient(circle at top left, rgba(124, 255, 79, 0.14), transparent 28%),
+    radial-gradient(circle at top right, rgba(24, 215, 255, 0.14), transparent 24%),
+    linear-gradient(180deg, #05070b 0%, #090d16 100%);
+}
+
+::selection {
+  background: rgba(124, 255, 79, 0.3);
+}
+
+.app-shell {
+  min-height: calc(100vh - 81px);
+  padding: 1.25rem;
+}
+
+.surface {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow:
+    0 18px 60px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
+}
+
+.surface-strong {
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+}
+
+.eyebrow {
+  color: var(--neon);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.neon-text {
+  color: var(--neon);
+}
+
+.neon-ring {
+  box-shadow: 0 0 0 1px rgba(124, 255, 79, 0.16), 0 0 30px rgba(124, 255, 79, 0.12);
+}
+
+select {
+  color-scheme: dark;
+}
+
+select option {
+  background: #111827;
+  color: #f5f7ff;
 }
