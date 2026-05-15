@@ -47,3 +47,16 @@ export type Profile = {
   carbs_target: number;
   fat_target: number;
 };
+
+export type MealTemplate = {
+  id: string;
+  profile_id: string | null;
+  name: string;
+};
+
+export type MealTemplateItem = {
+  id: string;
+  meal_template_id: string;
+  food_id: string;
+  amount: number;
+};

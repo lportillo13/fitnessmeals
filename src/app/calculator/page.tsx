@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Apple, Dumbbell, Plus, Save, TimerReset, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import type { Food, MealSlot, Profile, SelectedFood } from "@/lib/types";
+import type { Food, MealSlot, MealTemplate, MealTemplateItem, Profile, SelectedFood } from "@/lib/types";
 import { calculateDailyTotals, roundMacros } from "@/lib/macroCalculator";
 import MacroSummary from "@/components/MacroSummary";
 
@@ -58,6 +58,8 @@ export default function CalculatorPage() {
   const [hasChocolate, setHasChocolate] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("");
+  const [mealTemplates, setMealTemplates] = useState<MealTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [hasLoadedDatabaseMeals, setHasLoadedDatabaseMeals] = useState(false);
@@ -81,6 +83,27 @@ export default function CalculatorPage() {
 
     loadFoods();
   }, []);
+
+  useEffect(() => {
+    async function loadTemplates() {
+      if (!selectedProfileId) return;
+
+      const { data, error } = await createClient()
+        .from("meal_templates")
+        .select("*")
+        .or(`profile_id.eq.${selectedProfileId},profile_id.is.null`)
+        .order("name");
+
+      if (error) {
+        setSaveMessage(error.message);
+        return;
+      }
+
+      setMealTemplates((data || []) as MealTemplate[]);
+    }
+
+    loadTemplates();
+  }, [selectedProfileId]);
 
   useEffect(() => {
     async function loadProfiles() {
@@ -240,6 +263,36 @@ export default function CalculatorPage() {
 
   function removeItem(index: number) {
     setSelectedFoods((current) => current.filter((_, i) => i !== index));
+  }
+
+  async function addSavedMeal() {
+    if (!selectedTemplateId) return;
+
+    const { data, error } = await createClient()
+      .from("meal_template_items")
+      .select("food_id, amount")
+      .eq("meal_template_id", selectedTemplateId);
+
+    if (error) {
+      setSaveMessage(error.message);
+      return;
+    }
+
+    const items = (data || []) as Pick<MealTemplateItem, "food_id" | "amount">[];
+    const templateFoods = items
+      .map((item) => {
+        const food = foods.find((entry) => entry.id === item.food_id);
+        return food
+          ? {
+              food,
+              amount: Number(item.amount),
+              mealSlot: activeMeal,
+            }
+          : null;
+      })
+      .filter((item): item is SelectedFood => item !== null);
+
+    setSelectedFoods((current) => [...current, ...templateFoods]);
   }
 
   async function saveDay() {
@@ -437,6 +490,27 @@ export default function CalculatorPage() {
                     : "Loading today's meals..."
                   : "Choose a profile to save daily logs."}
               </span>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
+              <select
+                className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                value={selectedTemplateId}
+                onChange={(event) => setSelectedTemplateId(event.target.value)}
+              >
+                <option value="">Add saved meal</option>
+                {mealTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={addSavedMeal}
+                className="rounded-2xl bg-white/8 px-5 py-3 font-semibold"
+              >
+                Add Meal
+              </button>
             </div>
           </div>
 

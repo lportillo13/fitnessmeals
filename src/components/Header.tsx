@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Apple, Dumbbell, Flame, House, Menu, Repeat2, UserRound, X } from "lucide-react";
+import { Apple, Dumbbell, Flame, House, Menu, Repeat2, Soup, UserRound, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types";
 
@@ -11,6 +11,7 @@ const navItems = [
   { label: "Home", href: "/", icon: House },
   { label: "Calculator", href: "/calculator", icon: Dumbbell },
   { label: "Foods", href: "/foods", icon: Apple },
+  { label: "Meals", href: "/meals", icon: Soup },
   { label: "Swaps", href: "/swaps", icon: Repeat2 },
   { label: "Fasting", href: "/fasting", icon: Flame },
   { label: "Profile", href: "/profile", icon: UserRound },
