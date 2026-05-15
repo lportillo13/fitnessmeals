@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Apple, Dumbbell, Flame, House, Repeat2, UserRound } from "lucide-react";
+import { useState } from "react";
+import { Apple, Dumbbell, Flame, House, Menu, Repeat2, UserRound, X } from "lucide-react";
 
 const navItems = [
   { label: "Home", href: "/", icon: House },
@@ -15,18 +16,34 @@ const navItems = [
 
 export default function Header() {
   const pathname = usePathname();
+  const [isOpen, setIsOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-black/35 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 md:flex-row md:items-center md:justify-between">
-        <Link href="/" className="flex items-center gap-3 text-xl font-bold">
-          <span className="grid h-10 w-10 place-items-center rounded-2xl bg-lime-300 text-black shadow-[0_0_24px_rgba(124,255,79,0.45)]">
-            <Dumbbell className="h-5 w-5" />
-          </span>
-          <span>Meal Calculator</span>
-        </Link>
+      <div className="mx-auto max-w-6xl px-4 py-4">
+        <div className="flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-3 text-xl font-bold">
+            <span className="grid h-10 w-10 place-items-center rounded-2xl bg-lime-300 text-black shadow-[0_0_24px_rgba(124,255,79,0.45)]">
+              <Dumbbell className="h-5 w-5" />
+            </span>
+            <span>Meal Calculator</span>
+          </Link>
 
-        <nav className="flex gap-2 overflow-x-auto pb-1 md:pb-0">
+          <button
+            type="button"
+            onClick={() => setIsOpen((current) => !current)}
+            className="grid h-11 w-11 place-items-center rounded-2xl bg-white/5 text-white md:hidden"
+            aria-label={isOpen ? "Close menu" : "Open menu"}
+          >
+            {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
+
+        <nav
+          className={`${
+            isOpen ? "mt-4 flex" : "hidden"
+          } flex-col gap-2 md:flex md:flex-row md:items-center md:justify-end`}
+        >
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
@@ -35,6 +52,7 @@ export default function Header() {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => setIsOpen(false)}
                 className={`flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition ${
                   isActive
                     ? "bg-lime-300 text-black shadow-[0_0_20px_rgba(124,255,79,0.35)]"

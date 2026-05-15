@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Apple, ArrowRight, Dumbbell, Flame, Repeat2, UserRound } from "lucide-react";
 
@@ -14,7 +15,7 @@ export default function HomePage() {
     <main className="app-shell">
       <div className="mx-auto max-w-6xl">
         <section className="surface neon-ring mb-6 overflow-hidden rounded-[2rem] p-6 md:p-8">
-          <div className="grid gap-6 md:grid-cols-[1.2fr_0.8fr] md:items-end">
+          <div className="grid gap-6 lg:grid-cols-[1fr_0.82fr] lg:items-center">
             <div>
               <h1 className="max-w-3xl text-4xl font-bold tracking-tight md:text-6xl">
                 Cut cleaner. Eat smarter. Stay on target.
@@ -23,10 +24,23 @@ export default function HomePage() {
                 Jazmin, you are stronger than you think — one good choice at a time. 💚
               </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">
-              <Stat label="Protein target" value="130g" />
-              <Stat label="Calories" value="1500" />
-              <Stat label="Window" value="10am–8pm" />
+
+            <div className="space-y-4">
+              <div className="overflow-hidden rounded-[1.75rem] border border-white/10">
+                <Image
+                  src="/capybara-hero.png"
+                  alt="Capybara with a meal bowl and dumbbell"
+                  width={1536}
+                  height={1024}
+                  className="h-auto w-full"
+                  priority
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Stat label="Protein target" value="130g" />
+                <Stat label="Calories" value="1500" />
+                <Stat label="Window" value="10am–8pm" />
+              </div>
             </div>
           </div>
         </section>
