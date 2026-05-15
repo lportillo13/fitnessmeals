@@ -47,6 +47,7 @@ export default function CalculatorPage() {
   const [selectedFoods, setSelectedFoods] = useState<SelectedFood[]>([]);
   const [activeMeal, setActiveMeal] = useState<MealSlot>("breakfast");
   const [selectedFoodId, setSelectedFoodId] = useState("");
+  const [foodSearch, setFoodSearch] = useState("");
   const [amount, setAmount] = useState(1);
   const [hasCardio, setHasCardio] = useState(false);
   const [hasChocolate, setHasChocolate] = useState(false);
@@ -258,6 +259,19 @@ export default function CalculatorPage() {
 
   const selectedFood = foods.find((food) => food.id === selectedFoodId);
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
+  const matchingFoods = foods
+    .filter((food) =>
+      `${food.name} ${food.brand || ""} ${food.category}`
+        .toLowerCase()
+        .includes(foodSearch.toLowerCase())
+    )
+    .slice(0, 8);
+
+  function chooseFood(food: Food) {
+    setSelectedFoodId(food.id);
+    setFoodSearch(food.name);
+    setAmount(food.serving_mode === "grams" ? Number(food.base_grams || 100) : 1);
+  }
 
   return (
     <main className="app-shell">
@@ -302,28 +316,33 @@ export default function CalculatorPage() {
                 ))}
               </select>
 
-              <select
-                className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
-                value={selectedFoodId}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  const food = foods.find((item) => item.id === id);
+              <div className="relative">
+                <input
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                  value={foodSearch}
+                  onChange={(event) => {
+                    setFoodSearch(event.target.value);
+                    setSelectedFoodId("");
+                  }}
+                  placeholder="Search food"
+                />
 
-                  setSelectedFoodId(id);
-                  setAmount(
-                    food?.serving_mode === "grams"
-                      ? Number(food.base_grams || 100)
-                      : 1
-                  );
-                }}
-              >
-                <option value="">Select food</option>
-                {foods.map((food) => (
-                  <option key={food.id} value={food.id}>
-                    {food.name} — {food.serving_label}
-                  </option>
-                ))}
-              </select>
+                {foodSearch && !selectedFood && matchingFoods.length > 0 && (
+                  <div className="surface absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-2xl">
+                    {matchingFoods.map((food) => (
+                      <button
+                        key={food.id}
+                        type="button"
+                        onClick={() => chooseFood(food)}
+                        className="flex w-full items-center justify-between gap-3 border-b border-white/8 px-4 py-3 text-left text-sm last:border-b-0 hover:bg-white/8"
+                      >
+                        <span>{food.name}</span>
+                        <span className="muted">{food.serving_label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <input
                 className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
