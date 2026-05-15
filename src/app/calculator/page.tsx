@@ -34,6 +34,11 @@ type DailyMealRow = {
   meal_slot: MealSlot;
 };
 
+type DailyLogRow = {
+  has_cardio: boolean;
+  has_chocolate: boolean;
+};
+
 function getTodayKey() {
   return new Date().toLocaleDateString("en-CA");
 }
@@ -140,6 +145,22 @@ export default function CalculatorPage() {
       setSelectedFoods(restored);
       setHasLoadedDatabaseMeals(true);
       setSaveMessage(restored.length ? "Loaded today's saved meals." : "No meals saved for today yet.");
+
+      const { data: logData, error: logError } = await supabase
+        .from("daily_logs")
+        .select("has_cardio, has_chocolate")
+        .eq("profile_id", selectedProfileId)
+        .eq("log_date", getTodayKey())
+        .maybeSingle();
+
+      if (logError) {
+        setSaveMessage(logError.message);
+        return;
+      }
+
+      const dailyLog = logData as DailyLogRow | null;
+      setHasCardio(Boolean(dailyLog?.has_cardio));
+      setHasChocolate(Boolean(dailyLog?.has_chocolate));
     }
 
     loadTodayFromDatabase();
@@ -261,12 +282,35 @@ export default function CalculatorPage() {
       }
     }
 
+    const { error: logError } = await supabase.from("daily_logs").upsert(
+      {
+        profile_id: selectedProfileId,
+        log_date: getTodayKey(),
+        has_cardio: hasCardio,
+        has_chocolate: hasChocolate,
+      },
+      { onConflict: "profile_id,log_date" }
+    );
+
+    if (logError) {
+      setSaveMessage(logError.message);
+      setIsSaving(false);
+      return;
+    }
+
     setSaveMessage("Today's meals saved.");
     setIsSaving(false);
   }
 
   const selectedFood = foods.find((food) => food.id === selectedFoodId);
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
+  const cardioCalories = hasCardio ? 150 : 0;
+  const dailyTargets = {
+    calories: (selectedProfile?.calorie_target ?? targets.calories) + cardioCalories,
+    protein: selectedProfile?.protein_target ?? targets.protein,
+    carbs: selectedProfile?.carbs_target ?? targets.carbs,
+    fat: selectedProfile?.fat_target ?? targets.fat,
+  };
   const matchingFoods = foods
     .filter((food) =>
       `${food.name} ${food.brand || ""} ${food.category}`
@@ -441,12 +485,12 @@ export default function CalculatorPage() {
         </section>
 
         <div className="order-1 lg:hidden">
-          <MacroSummary totals={totals} targets={targets} />
+          <MacroSummary totals={totals} targets={dailyTargets} />
         </div>
 
         <aside className="order-3 space-y-4 lg:order-2">
           <div className="hidden lg:block">
-            <MacroSummary totals={totals} targets={targets} />
+            <MacroSummary totals={totals} targets={dailyTargets} />
           </div>
 
           <div className="surface rounded-3xl p-5">
@@ -461,12 +505,12 @@ export default function CalculatorPage() {
                 checked={hasCardio}
                 onChange={(e) => setHasCardio(e.target.checked)}
               />
-              30 minutes cardio today
+              30 minutes cardio today (+150 calories)
             </label>
 
             {hasCardio && (
               <div className="mb-4 rounded-2xl border border-lime-300/15 bg-lime-300/10 p-3 text-sm text-lime-100">
-                Optional add-on: 100–180 calories. Best options: 1 banana, 1 Oikos,
+                Your daily calorie target is 150 calories higher today. Best options: 1 banana, 1 Oikos,
                 1 slice Ezekiel bread, 100 g cooked rice, or 150 g potato.
               </div>
             )}
