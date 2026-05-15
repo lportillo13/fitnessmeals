@@ -47,7 +47,18 @@ export default function ProfilePage() {
       setMessage(error.message);
       return;
     }
-    setProfiles((data || []) as Profile[]);
+
+    const loadedProfiles = (data || []) as Profile[];
+    setProfiles(loadedProfiles);
+
+    const rememberedProfileId = window.localStorage.getItem("selected-profile-id");
+    const rememberedProfile = loadedProfiles.find(
+      (profile) => profile.id === rememberedProfileId
+    );
+
+    if (rememberedProfile) {
+      loadProfile(rememberedProfile, false);
+    }
   }
 
   function updateField(field: keyof ProfileForm, value: string) {
@@ -60,7 +71,7 @@ export default function ProfilePage() {
     }));
   }
 
-  function loadProfile(profile: Profile) {
+  function loadProfile(profile: Profile, announce = true) {
     setForm({
       id: profile.id,
       name: profile.name,
@@ -74,7 +85,9 @@ export default function ProfilePage() {
       goalDate: profile.goal_date,
     });
     window.localStorage.setItem("selected-profile-id", profile.id);
-    setMessage(`${profile.name}'s profile loaded.`);
+    if (announce) {
+      setMessage(`${profile.name}'s profile loaded.`);
+    }
   }
 
   async function saveProfile() {
