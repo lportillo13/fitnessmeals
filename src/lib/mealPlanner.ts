@@ -124,6 +124,50 @@ export function pickAlternative(
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
+export function chooseRemainingPlan(
+  profile: Profile,
+  options: TemplateOption[],
+  rules: MealRule[],
+  remainingSlots: MealSlot[],
+  consumed: MacroTotals
+) {
+  let remainingTarget: MacroTotals = {
+    calories: Math.max(0, profile.calorie_target - consumed.calories),
+    protein: Math.max(0, profile.protein_target - consumed.protein),
+    carbs: Math.max(0, profile.carbs_target - consumed.carbs),
+    fat: Math.max(0, profile.fat_target - consumed.fat),
+    fiber: 0,
+  };
+
+  return remainingSlots.map((slot) => {
+    const slotOptions = getSlotOptions(options, slot, rules);
+    const slotsLeft = Math.max(1, remainingSlots.length);
+    const perMealTarget: MacroTotals = {
+      calories: remainingTarget.calories / slotsLeft,
+      protein: remainingTarget.protein / slotsLeft,
+      carbs: remainingTarget.carbs / slotsLeft,
+      fat: remainingTarget.fat / slotsLeft,
+      fiber: 0,
+    };
+    const selected =
+      [...slotOptions].sort(
+        (a, b) => scoreOption(a.macros, perMealTarget) - scoreOption(b.macros, perMealTarget)
+      )[0] || null;
+
+    if (selected) {
+      remainingTarget = {
+        calories: Math.max(0, remainingTarget.calories - selected.macros.calories),
+        protein: Math.max(0, remainingTarget.protein - selected.macros.protein),
+        carbs: Math.max(0, remainingTarget.carbs - selected.macros.carbs),
+        fat: Math.max(0, remainingTarget.fat - selected.macros.fat),
+        fiber: 0,
+      };
+    }
+
+    return { slot, selected };
+  });
+}
+
 function slotTarget(profile: Profile, share: number): MacroTotals {
   return {
     calories: profile.calorie_target * share,

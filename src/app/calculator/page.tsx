@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   buildTemplateOptions,
   choosePlan,
+  chooseRemainingPlan,
   getSlotOptions,
   pickAlternative,
   plannerSlots,
@@ -269,12 +270,53 @@ export default function CalculatorPage() {
 
   async function updateItemAmount(itemId: string, amount: number) {
     await createClient().from("daily_plan_items").update({ amount }).eq("id", itemId);
-    setMeals((current) =>
-      current.map((meal) => ({
+    const nextMeals = meals.map((meal) => ({
         ...meal,
         items: meal.items.map((item) => (item.id === itemId ? { ...item, amount } : item)),
-      }))
+      }));
+    setMeals(nextMeals);
+
+    const changedMeal = nextMeals.find((meal) =>
+      meal.items.some((item) => item.id === itemId)
     );
+    if (!changedMeal || !selectedProfile) return;
+
+    const changedIndex = plannerSlots.findIndex((slot) => slot.key === changedMeal.meal_slot);
+    const futureMeals = nextMeals.filter(
+      (meal) =>
+        plannerSlots.findIndex((slot) => slot.key === meal.meal_slot) > changedIndex &&
+        !meal.completed
+    );
+    if (futureMeals.length === 0) return;
+
+    const lockedMeals = nextMeals.filter(
+      (meal) =>
+        plannerSlots.findIndex((slot) => slot.key === meal.meal_slot) <= changedIndex ||
+        meal.completed
+    );
+    const lockedFoods = lockedMeals.flatMap((meal) =>
+      meal.items
+        .map((item) => {
+          const food = foods.find((candidate) => candidate.id === item.food_id);
+          return food ? { food, amount: Number(item.amount), mealSlot: meal.meal_slot } : null;
+        })
+        .filter((item): item is SelectedFood => item !== null)
+    );
+    const consumed = calculateDailyTotals(lockedFoods);
+    const replacementPlan = chooseRemainingPlan(
+      selectedProfile,
+      options,
+      rules,
+      futureMeals.map((meal) => meal.meal_slot),
+      consumed
+    );
+
+    for (const replacement of replacementPlan) {
+      if (replacement.selected) {
+        await replaceMeal(replacement.slot, replacement.selected);
+      }
+    }
+    setMessage("Future meals were rebalanced after your change.");
   }
 
   async function toggleCompleted(mealId: string, completed: boolean) {
