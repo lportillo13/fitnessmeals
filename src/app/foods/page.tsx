@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Apple, Camera, Pencil, Plus, Save, ScanBarcode, X } from "lucide-react";
+import {
+  Html5Qrcode,
+  Html5QrcodeSupportedFormats,
+} from "html5-qrcode";
 import { createClient } from "@/lib/supabase/client";
 import type { Food } from "@/lib/types";
 
@@ -31,16 +35,6 @@ type OpenFoodFactsProduct = {
   };
 };
 
-type BarcodeDetection = { rawValue: string };
-
-type BarcodeDetectorInstance = {
-  detect(source: ImageBitmapSource): Promise<BarcodeDetection[]>;
-};
-
-type BarcodeDetectorConstructor = new (options?: {
-  formats?: string[];
-}) => BarcodeDetectorInstance;
-
 const fallbackDraft: FoodDraft = {
   name: "",
   brand: null,
@@ -69,9 +63,8 @@ export default function FoodsPage() {
   const [addingFood, setAddingFood] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scannerMessage, setScannerMessage] = useState("");
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const scanTimerRef = useRef<number | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scannerElementId = "food-barcode-reader";
 
   useEffect(() => {
     async function loadFoods() {
@@ -91,7 +84,9 @@ export default function FoodsPage() {
 
     loadFoods();
 
-    return () => stopScanner();
+    return () => {
+      void stopScanner();
+    };
   }, []);
 
   function startEditing(food: Food) {
@@ -234,59 +229,63 @@ export default function FoodsPage() {
   }
 
   async function startScanner() {
-    const Detector = (window as typeof window & {
-      BarcodeDetector?: BarcodeDetectorConstructor;
-    }).BarcodeDetector;
-
-    if (!Detector) {
-      setScannerMessage("Camera scanning is not supported here. You can still type the barcode.");
-      return;
-    }
-
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
+      const scanner = new Html5Qrcode(scannerElementId, {
+        verbose: false,
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+        ],
       });
-      streamRef.current = stream;
+
+      scannerRef.current = scanner;
       setIsScanning(true);
       setScannerMessage("Point the camera at the barcode.");
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-
-      const detector = new Detector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] });
-      scanTimerRef.current = window.setInterval(async () => {
-        if (!videoRef.current) return;
-        const detections = await detector.detect(videoRef.current);
-        const detectedCode = detections[0]?.rawValue;
-        if (!detectedCode) return;
-
-        setBarcode(detectedCode);
-        setScannerMessage(`Scanned ${detectedCode}.`);
-        stopScanner();
-        void lookupBarcode(detectedCode);
-      }, 700);
+      await scanner.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 280, height: 140 },
+          aspectRatio: 1.777778,
+        },
+        (detectedCode) => {
+          if (!detectedCode) return;
+          setBarcode(detectedCode);
+          setScannerMessage(`Scanned ${detectedCode}.`);
+          void stopScanner();
+          void lookupBarcode(detectedCode);
+        },
+        () => {
+          // Keep scanning quietly until a readable barcode appears.
+        }
+      );
     } catch {
-      setScannerMessage("Camera access was blocked or unavailable.");
-      stopScanner();
+      setScannerMessage(
+        "Camera access was blocked or unavailable. You can still type the barcode below."
+      );
+      await stopScanner();
     }
   }
 
-  function stopScanner() {
-    if (scanTimerRef.current) {
-      window.clearInterval(scanTimerRef.current);
-      scanTimerRef.current = null;
+  async function stopScanner() {
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop();
+      } catch {
+        // The scanner may already be stopped.
+      }
+
+      try {
+        await scannerRef.current.clear();
+      } catch {
+        // Clearing an already-cleared scanner is harmless.
+      }
     }
 
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-
+    scannerRef.current = null;
     setIsScanning(false);
   }
 
@@ -344,14 +343,10 @@ export default function FoodsPage() {
 
           {scannerMessage && <p className="muted mt-3 text-sm">{scannerMessage}</p>}
 
-          {isScanning && (
-            <video
-              ref={videoRef}
-              className="mt-4 max-h-72 w-full rounded-2xl border border-white/10 object-cover"
-              muted
-              playsInline
-            />
-          )}
+          <div
+            id={scannerElementId}
+            className={`${isScanning ? "mt-4" : ""} overflow-hidden rounded-2xl border border-white/10`}
+          />
 
           {draftFood && (
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
