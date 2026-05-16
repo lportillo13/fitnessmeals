@@ -110,6 +110,83 @@ export function choosePlan(
   });
 }
 
+export function chooseOptimizedDayPlan(
+  profile: Profile,
+  options: TemplateOption[],
+  rules: MealRule[],
+  foods: Food[]
+) {
+  const slotOptions = plannerSlots.map((slot) => ({
+    slot: slot.key,
+    options: getSlotOptions(options, slot.key, rules).slice(0, 8),
+  }));
+
+  if (slotOptions.some((entry) => entry.options.length === 0)) {
+    return plannerSlots.map((slot) => ({
+      slot: slot.key,
+      selected: null as TemplateOption | null,
+      tunedItems: [] as MealTemplateItem[],
+    }));
+  }
+
+  let best:
+    | {
+        selections: TemplateOption[];
+        score: number;
+      }
+    | null = null;
+
+  function visit(index: number, selections: TemplateOption[]) {
+    if (index === slotOptions.length) {
+      const totals = selections.reduce<MacroTotals>(
+        (acc, selection) => ({
+          calories: acc.calories + selection.macros.calories,
+          protein: acc.protein + selection.macros.protein,
+          carbs: acc.carbs + selection.macros.carbs,
+          fat: acc.fat + selection.macros.fat,
+          fiber: acc.fiber + selection.macros.fiber,
+        }),
+        { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
+      );
+      const score = scoreOption(totals, {
+        calories: profile.calorie_target,
+        protein: profile.protein_target,
+        carbs: profile.carbs_target,
+        fat: profile.fat_target,
+        fiber: 0,
+      });
+      if (!best || score < best.score) {
+        best = { selections: [...selections], score };
+      }
+      return;
+    }
+
+    for (const option of slotOptions[index].options) {
+      selections.push(option);
+      visit(index + 1, selections);
+      selections.pop();
+    }
+  }
+
+  visit(0, []);
+  const finalBest = best as { selections: TemplateOption[]; score: number } | null;
+  if (!finalBest) return [];
+
+  const tunedItems = tuneWholeDay(finalBest.selections, foods, {
+    calories: profile.calorie_target,
+    protein: profile.protein_target,
+    carbs: profile.carbs_target,
+    fat: profile.fat_target,
+    fiber: 0,
+  });
+
+  return plannerSlots.map((slot, index) => ({
+    slot: slot.key,
+    selected: finalBest.selections[index],
+    tunedItems: tunedItems[index],
+  }));
+}
+
 export function pickAlternative(
   currentTemplateId: string | null,
   slot: MealSlot,
@@ -307,4 +384,66 @@ function totalForItems(items: MealTemplateItem[], foodById: Map<string, Food>) {
 
 function roundAmount(value: number, step: number) {
   return Math.round(value / step) * step;
+}
+
+function tuneWholeDay(
+  selections: TemplateOption[],
+  foods: Food[],
+  target: MacroTotals
+) {
+  const foodById = new Map(foods.map((food) => [food.id, food]));
+  const meals = selections.map((selection) => selection.items.map((item) => ({ ...item })));
+
+  for (let iteration = 0; iteration < 180; iteration += 1) {
+    const current = totalForMeals(meals, foodById);
+    const before = scoreOption(current, target);
+    let bestMeals = meals;
+    let bestScore = before;
+
+    for (let mealIndex = 0; mealIndex < meals.length; mealIndex += 1) {
+      for (let itemIndex = 0; itemIndex < meals[mealIndex].length; itemIndex += 1) {
+        const item = meals[mealIndex][itemIndex];
+        const food = foodById.get(item.food_id);
+        if (!food) continue;
+        const step = food.serving_mode === "grams" ? 5 : 0.25;
+        for (const direction of [-1, 1]) {
+          const candidateAmount = Math.max(step, roundAmount(item.amount + step * direction, step));
+          if (candidateAmount === item.amount) continue;
+          const candidateMeals = meals.map((meal, candidateMealIndex) =>
+            meal.map((candidate, candidateItemIndex) =>
+              candidateMealIndex === mealIndex && candidateItemIndex === itemIndex
+                ? { ...candidate, amount: candidateAmount }
+                : candidate
+            )
+          );
+          const candidateScore = scoreOption(totalForMeals(candidateMeals, foodById), target);
+          if (candidateScore + 0.0001 < bestScore) {
+            bestScore = candidateScore;
+            bestMeals = candidateMeals;
+          }
+        }
+      }
+    }
+
+    if (bestMeals === meals) break;
+    meals.splice(0, meals.length, ...bestMeals);
+  }
+
+  return meals;
+}
+
+function totalForMeals(meals: MealTemplateItem[][], foodById: Map<string, Food>) {
+  return meals.reduce<MacroTotals>(
+    (totals, meal) => {
+      const next = totalForItems(meal, foodById);
+      return {
+        calories: totals.calories + next.calories,
+        protein: totals.protein + next.protein,
+        carbs: totals.carbs + next.carbs,
+        fat: totals.fat + next.fat,
+        fiber: totals.fiber + next.fiber,
+      };
+    },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
+  );
 }

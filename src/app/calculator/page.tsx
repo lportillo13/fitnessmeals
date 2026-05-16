@@ -5,7 +5,7 @@ import { CheckCircle2, Plus, RefreshCw, Shuffle, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   buildTemplateOptions,
-  choosePlan,
+  chooseOptimizedDayPlan,
   getSlotOptions,
   planRemainingMealsByBudget,
   pickAlternative,
@@ -173,7 +173,7 @@ export default function CalculatorPage() {
 
   async function generatePlan() {
     if (!selectedProfile) return;
-    const chosen = choosePlan(selectedProfile, options, rules);
+    const chosen = chooseOptimizedDayPlan(selectedProfile, options, rules, foods);
     if (chosen.some((entry) => !entry.selected)) {
       setMessage("Create at least one available saved meal for every meal slot first.");
       return;
@@ -205,7 +205,8 @@ export default function CalculatorPage() {
       .select("*");
     const rows = ((createdMeals || []) as DailyPlanMeal[]).flatMap((meal) => {
       const selected = chosen.find((entry) => entry.slot === meal.meal_slot)?.selected;
-      return (selected?.items || []).map((item) => ({
+      const tunedItems = chosen.find((entry) => entry.slot === meal.meal_slot)?.tunedItems || [];
+      return (tunedItems.length ? tunedItems : selected?.items || []).map((item) => ({
         daily_plan_meal_id: meal.id,
         food_id: item.food_id,
         amount: item.amount,
