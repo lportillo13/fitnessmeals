@@ -10,6 +10,7 @@ import {
   getSlotOptions,
   pickAlternative,
   plannerSlots,
+  rebalanceMealItems,
   type TemplateOption,
 } from "@/lib/mealPlanner";
 import { calculateDailyTotals, roundMacros } from "@/lib/macroCalculator";
@@ -312,11 +313,22 @@ export default function CalculatorPage() {
     );
 
     for (const replacement of replacementPlan) {
-      if (replacement.selected) {
+      const currentMeal = futureMeals.find((meal) => meal.meal_slot === replacement.slot);
+      if (!currentMeal) continue;
+
+      const templateSource = currentMeal.meal_template_id
+        ? options.find((option) => option.template.id === currentMeal.meal_template_id)
+        : null;
+
+      const targetMacros = replacement.selected?.macros;
+      if (templateSource && targetMacros) {
+        const tunedItems = rebalanceMealItems(templateSource.items, foods, targetMacros);
+        await replaceMealWithItems(currentMeal, templateSource.template, tunedItems);
+      } else if (replacement.selected) {
         await replaceMeal(replacement.slot, replacement.selected);
       }
     }
-    setMessage("Future meals were rebalanced after your change.");
+    setMessage("Future meals were rebalanced and portion sizes were tuned after your change.");
   }
 
   async function toggleCompleted(mealId: string, completed: boolean) {
@@ -351,6 +363,42 @@ export default function CalculatorPage() {
     await createClient().from("daily_plan_items").delete().eq("id", itemId);
     setMeals((current) =>
       current.map((meal) => ({ ...meal, items: meal.items.filter((item) => item.id !== itemId) }))
+    );
+  }
+
+  async function replaceMealWithItems(
+    meal: PlannedMeal,
+    template: MealTemplate,
+    items: MealTemplateItem[]
+  ) {
+    const supabase = createClient();
+    await supabase.from("daily_plan_items").delete().eq("daily_plan_meal_id", meal.id);
+    const { data: updatedMeal } = await supabase
+      .from("daily_plan_meals")
+      .update({
+        meal_template_id: template.id,
+        meal_name: template.name,
+        completed: false,
+      })
+      .eq("id", meal.id)
+      .select("*")
+      .single();
+    const { data: newItems } = await supabase
+      .from("daily_plan_items")
+      .insert(
+        items.map((item) => ({
+          daily_plan_meal_id: meal.id,
+          food_id: item.food_id,
+          amount: item.amount,
+        }))
+      )
+      .select("*");
+    setMeals((current) =>
+      current.map((entry) =>
+        entry.id === meal.id
+          ? { ...(updatedMeal as DailyPlanMeal), items: (newItems || []) as DailyPlanItem[] }
+          : entry
+      )
     );
   }
 

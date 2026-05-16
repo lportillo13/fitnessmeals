@@ -168,6 +168,47 @@ export function chooseRemainingPlan(
   });
 }
 
+export function rebalanceMealItems(
+  items: MealTemplateItem[],
+  foods: Food[],
+  target: MacroTotals
+) {
+  const foodById = new Map(foods.map((food) => [food.id, food]));
+  const nextItems = items.map((item) => ({ ...item }));
+
+  for (let iteration = 0; iteration < 80; iteration += 1) {
+    const current = totalForItems(nextItems, foodById);
+    const before = scoreOption(current, target);
+    let bestItems = nextItems;
+    let bestScore = before;
+
+    for (const item of nextItems) {
+      const food = foodById.get(item.food_id);
+      if (!food) continue;
+      const step = food.serving_mode === "grams" ? 5 : 0.25;
+      for (const direction of [-1, 1]) {
+        const candidateAmount = Math.max(step, roundAmount(item.amount + step * direction, step));
+        if (candidateAmount === item.amount) continue;
+        const candidateItems = nextItems.map((candidate) =>
+          candidate.food_id === item.food_id && candidate.amount === item.amount
+            ? { ...candidate, amount: candidateAmount }
+            : candidate
+        );
+        const candidateScore = scoreOption(totalForItems(candidateItems, foodById), target);
+        if (candidateScore + 0.0001 < bestScore) {
+          bestScore = candidateScore;
+          bestItems = candidateItems;
+        }
+      }
+    }
+
+    if (bestItems === nextItems) break;
+    nextItems.splice(0, nextItems.length, ...bestItems);
+  }
+
+  return nextItems;
+}
+
 function slotTarget(profile: Profile, share: number): MacroTotals {
   return {
     calories: profile.calorie_target * share,
@@ -185,4 +226,26 @@ function scoreOption(macros: MacroTotals, target: MacroTotals) {
     Math.abs(macros.carbs - target.carbs) / Math.max(target.carbs, 1) +
     Math.abs(macros.fat - target.fat) / Math.max(target.fat, 1)
   );
+}
+
+function totalForItems(items: MealTemplateItem[], foodById: Map<string, Food>) {
+  return items.reduce<MacroTotals>(
+    (totals, item) => {
+      const food = foodById.get(item.food_id);
+      if (!food) return totals;
+      const next = calculateFoodMacros(food, item.amount);
+      return {
+        calories: totals.calories + next.calories,
+        protein: totals.protein + next.protein,
+        carbs: totals.carbs + next.carbs,
+        fat: totals.fat + next.fat,
+        fiber: totals.fiber + next.fiber,
+      };
+    },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
+  );
+}
+
+function roundAmount(value: number, step: number) {
+  return Math.round(value / step) * step;
 }
