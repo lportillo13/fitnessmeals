@@ -180,21 +180,24 @@ export default function CalculatorPage() {
     }
 
     const supabase = createClient();
-    if (plan) {
-      await supabase.from("daily_plans").delete().eq("id", plan.id);
-    }
-    const { data: createdPlan, error } = await supabase
-      .from("daily_plans")
-      .insert({ profile_id: selectedProfile.id, plan_date: getTodayKey() })
-      .select("*")
-      .single();
-    if (error) {
-      setMessage(error.message);
-      return;
+    let activePlan = plan;
+    if (activePlan) {
+      await supabase.from("daily_plan_meals").delete().eq("daily_plan_id", activePlan.id);
+    } else {
+      const { data: createdPlan, error } = await supabase
+        .from("daily_plans")
+        .insert({ profile_id: selectedProfile.id, plan_date: getTodayKey() })
+        .select("*")
+        .single();
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+      activePlan = createdPlan as DailyPlan;
     }
 
     const mealRows = chosen.map((entry) => ({
-      daily_plan_id: createdPlan.id,
+      daily_plan_id: activePlan!.id,
       meal_slot: entry.slot,
       meal_template_id: entry.selected!.template.id,
       meal_name: entry.selected!.template.name,
@@ -213,7 +216,7 @@ export default function CalculatorPage() {
       }));
     });
     const { data: createdItems } = await supabase.from("daily_plan_items").insert(rows).select("*");
-    setPlan(createdPlan as DailyPlan);
+    setPlan(activePlan);
     setMeals(
       ((createdMeals || []) as DailyPlanMeal[]).map((meal) => ({
         ...meal,
