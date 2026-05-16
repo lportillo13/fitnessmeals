@@ -209,6 +209,65 @@ export function rebalanceMealItems(
   return nextItems;
 }
 
+export function planRemainingMealsByBudget(
+  profile: Profile,
+  currentMeals: {
+    slot: MealSlot;
+    currentTemplateId: string | null;
+  }[],
+  options: TemplateOption[],
+  rules: MealRule[],
+  foods: Food[],
+  consumed: MacroTotals
+) {
+  let remainingTarget: MacroTotals = {
+    calories: Math.max(0, profile.calorie_target - consumed.calories),
+    protein: Math.max(0, profile.protein_target - consumed.protein),
+    carbs: Math.max(0, profile.carbs_target - consumed.carbs),
+    fat: Math.max(0, profile.fat_target - consumed.fat),
+    fiber: 0,
+  };
+
+  return currentMeals.map((meal, index) => {
+    const slotsLeft = currentMeals.length - index;
+    const perMealTarget: MacroTotals = {
+      calories: remainingTarget.calories / slotsLeft,
+      protein: remainingTarget.protein / slotsLeft,
+      carbs: remainingTarget.carbs / slotsLeft,
+      fat: remainingTarget.fat / slotsLeft,
+      fiber: 0,
+    };
+
+    const candidates = getSlotOptions(options, meal.slot, rules).map((option) => ({
+      option,
+      tunedItems: rebalanceMealItems(option.items, foods, perMealTarget),
+    }));
+    const best =
+      candidates.sort(
+        (a, b) =>
+          scoreOption(totalForItems(a.tunedItems, new Map(foods.map((food) => [food.id, food]))), perMealTarget) -
+          scoreOption(totalForItems(b.tunedItems, new Map(foods.map((food) => [food.id, food]))), perMealTarget)
+      )[0] || null;
+
+    if (!best) return { slot: meal.slot, selected: null, tunedItems: [] };
+
+    const macros = totalForItems(best.tunedItems, new Map(foods.map((food) => [food.id, food])));
+    remainingTarget = {
+      calories: Math.max(0, remainingTarget.calories - macros.calories),
+      protein: Math.max(0, remainingTarget.protein - macros.protein),
+      carbs: Math.max(0, remainingTarget.carbs - macros.carbs),
+      fat: Math.max(0, remainingTarget.fat - macros.fat),
+      fiber: 0,
+    };
+
+    return {
+      slot: meal.slot,
+      selected: best.option,
+      tunedItems: best.tunedItems,
+    };
+  });
+}
+
 function slotTarget(profile: Profile, share: number): MacroTotals {
   return {
     calories: profile.calorie_target * share,

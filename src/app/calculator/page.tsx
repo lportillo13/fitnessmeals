@@ -6,11 +6,10 @@ import { createClient } from "@/lib/supabase/client";
 import {
   buildTemplateOptions,
   choosePlan,
-  chooseRemainingPlan,
   getSlotOptions,
+  planRemainingMealsByBudget,
   pickAlternative,
   plannerSlots,
-  rebalanceMealItems,
   type TemplateOption,
 } from "@/lib/mealPlanner";
 import { calculateDailyTotals, roundMacros } from "@/lib/macroCalculator";
@@ -304,29 +303,27 @@ export default function CalculatorPage() {
         .filter((item): item is SelectedFood => item !== null)
     );
     const consumed = calculateDailyTotals(lockedFoods);
-    const replacementPlan = chooseRemainingPlan(
+    const replacementPlan = planRemainingMealsByBudget(
       selectedProfile,
+      futureMeals.map((meal) => ({
+        slot: meal.meal_slot,
+        currentTemplateId: meal.meal_template_id,
+      })),
       options,
       rules,
-      futureMeals.map((meal) => meal.meal_slot),
+      foods,
       consumed
     );
 
     for (const replacement of replacementPlan) {
       const currentMeal = futureMeals.find((meal) => meal.meal_slot === replacement.slot);
       if (!currentMeal) continue;
-
-      const templateSource = currentMeal.meal_template_id
-        ? options.find((option) => option.template.id === currentMeal.meal_template_id)
-        : null;
-
-      const targetMacros = replacement.selected?.macros;
-      if (templateSource && targetMacros) {
-        const tunedItems = rebalanceMealItems(templateSource.items, foods, targetMacros);
-        await replaceMealWithItems(currentMeal, templateSource.template, tunedItems);
-      } else if (replacement.selected) {
-        await replaceMeal(replacement.slot, replacement.selected);
-      }
+      if (!replacement.selected) continue;
+      await replaceMealWithItems(
+        currentMeal,
+        replacement.selected.template,
+        replacement.tunedItems
+      );
     }
     setMessage("Future meals were rebalanced and portion sizes were tuned after your change.");
   }
