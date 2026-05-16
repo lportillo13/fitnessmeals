@@ -47,6 +47,7 @@ const fallbackDraft: FoodDraft = {
   carbs_g: 0,
   fat_g: 0,
   fiber_g: 0,
+  is_available: true,
 };
 
 export default function FoodsPage() {
@@ -131,6 +132,25 @@ export default function FoodsPage() {
     setMessage("Macros saved.");
     setSavingFoodId(null);
     cancelEditing();
+  }
+
+  async function toggleAvailability(food: Food) {
+    const nextValue = food.is_available === false;
+    const { data, error } = await createClient()
+      .from("foods")
+      .update({ is_available: nextValue })
+      .eq("id", food.id)
+      .select("*")
+      .single();
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setFoods((current) =>
+      current.map((item) => (item.id === food.id ? (data as Food) : item))
+    );
   }
 
   async function lookupBarcode(code = barcode) {
@@ -395,6 +415,7 @@ export default function FoodsPage() {
                 <th className="p-3">Carbs</th>
                 <th className="p-3">Fat</th>
                 <th className="p-3">Fiber</th>
+                <th className="p-3">Have it?</th>
                 <th className="p-3">Mode</th>
                 <th className="p-3">Actions</th>
               </tr>
@@ -456,6 +477,19 @@ export default function FoodsPage() {
                         )
                       }
                     />
+                    <td className="p-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleAvailability(food)}
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                          food.is_available === false
+                            ? "bg-white/8 text-slate-300"
+                            : "bg-lime-300 text-black"
+                        }`}
+                      >
+                        {food.is_available === false ? "No" : "Yes"}
+                      </button>
+                    </td>
                     <td className="p-3">{food.serving_mode}</td>
                     <td className="p-3">
                       {isEditing ? (

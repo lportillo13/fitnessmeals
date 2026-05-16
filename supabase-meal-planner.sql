@@ -1,0 +1,54 @@
+create extension if not exists pgcrypto;
+
+alter table public.foods
+  add column if not exists is_available boolean not null default true;
+
+alter table public.meal_templates
+  add column if not exists meal_slot text
+  check (meal_slot in ('breakfast', 'snack_1', 'lunch', 'snack_2', 'dinner'));
+
+create table if not exists public.meal_rules (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid references public.meal_profiles(id) on delete cascade,
+  name text not null,
+  meal_slot text not null check (meal_slot in ('breakfast', 'snack_1', 'lunch', 'snack_2', 'dinner')),
+  required_food_id uuid not null references public.foods(id) on delete cascade,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.daily_plans (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references public.meal_profiles(id) on delete cascade,
+  plan_date date not null,
+  generated_at timestamptz not null default now(),
+  unique (profile_id, plan_date)
+);
+
+create table if not exists public.daily_plan_meals (
+  id uuid primary key default gen_random_uuid(),
+  daily_plan_id uuid not null references public.daily_plans(id) on delete cascade,
+  meal_slot text not null check (meal_slot in ('breakfast', 'snack_1', 'lunch', 'snack_2', 'dinner')),
+  meal_template_id uuid references public.meal_templates(id) on delete set null,
+  meal_name text not null,
+  completed boolean not null default false,
+  unique (daily_plan_id, meal_slot)
+);
+
+create table if not exists public.daily_plan_items (
+  id uuid primary key default gen_random_uuid(),
+  daily_plan_meal_id uuid not null references public.daily_plan_meals(id) on delete cascade,
+  food_id uuid not null references public.foods(id) on delete cascade,
+  amount numeric not null check (amount >= 0)
+);
+
+update public.meal_templates
+set meal_slot = case
+  when lower(name) like '%breakfast%' then 'breakfast'
+  when lower(name) like '%snack 2%' then 'snack_2'
+  when lower(name) like '%snack%' then 'snack_1'
+  when lower(name) like '%lunch%' then 'lunch'
+  when lower(name) like '%dinner%' then 'dinner'
+  else meal_slot
+end
+where meal_slot is null;

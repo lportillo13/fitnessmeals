@@ -1,572 +1,402 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Apple, Dumbbell, Plus, Save, TimerReset, Trash2 } from "lucide-react";
+import { CheckCircle2, Plus, RefreshCw, Shuffle, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import type { Food, MealSlot, MealTemplate, MealTemplateItem, Profile, SelectedFood } from "@/lib/types";
+import {
+  buildTemplateOptions,
+  choosePlan,
+  getSlotOptions,
+  pickAlternative,
+  plannerSlots,
+  type TemplateOption,
+} from "@/lib/mealPlanner";
 import { calculateDailyTotals, roundMacros } from "@/lib/macroCalculator";
+import type {
+  DailyPlan,
+  DailyPlanItem,
+  DailyPlanMeal,
+  Food,
+  MealRule,
+  MealSlot,
+  MealTemplate,
+  MealTemplateItem,
+  Profile,
+  SelectedFood,
+} from "@/lib/types";
 import MacroSummary from "@/components/MacroSummary";
 
-const mealSlots: { key: MealSlot; label: string }[] = [
-  { key: "breakfast", label: "Breakfast" },
-  { key: "snack_1", label: "Snack 1" },
-  { key: "lunch", label: "Lunch" },
-  { key: "snack_2", label: "Snack 2" },
-  { key: "dinner", label: "Dinner" },
-];
-
-const targets = {
-  calories: 1500,
-  protein: 130,
-  carbs: 135,
-  fat: 45,
-};
-
-type StoredFoodSelection = {
-  foodId: string;
-  amount: number;
-  mealSlot: MealSlot;
-};
-
-type DailyMealRow = {
-  food_id: string;
-  amount: number;
-  meal_slot: MealSlot;
-};
-
-type DailyLogRow = {
-  has_cardio: boolean;
-  has_chocolate: boolean;
+type PlannedMeal = DailyPlanMeal & {
+  items: DailyPlanItem[];
 };
 
 function getTodayKey() {
   return new Date().toLocaleDateString("en-CA");
 }
 
-function getStorageKey() {
-  return `meal-calculator:${getTodayKey()}`;
-}
-
 export default function CalculatorPage() {
   const [foods, setFoods] = useState<Food[]>([]);
-  const [selectedFoods, setSelectedFoods] = useState<SelectedFood[]>([]);
-  const [activeMeal, setActiveMeal] = useState<MealSlot>("breakfast");
-  const [selectedFoodId, setSelectedFoodId] = useState("");
-  const [foodSearch, setFoodSearch] = useState("");
-  const [amount, setAmount] = useState(1);
-  const [hasCardio, setHasCardio] = useState(false);
-  const [hasChocolate, setHasChocolate] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("");
-  const [mealTemplates, setMealTemplates] = useState<MealTemplate[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState("");
-  const [saveMessage, setSaveMessage] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [hasLoadedDatabaseMeals, setHasLoadedDatabaseMeals] = useState(false);
+  const [templates, setTemplates] = useState<MealTemplate[]>([]);
+  const [templateItems, setTemplateItems] = useState<MealTemplateItem[]>([]);
+  const [rules, setRules] = useState<MealRule[]>([]);
+  const [plan, setPlan] = useState<DailyPlan | null>(null);
+  const [meals, setMeals] = useState<PlannedMeal[]>([]);
+  const [checkedTodayPlan, setCheckedTodayPlan] = useState(false);
+  const [message, setMessage] = useState("");
+  const [foodSearch, setFoodSearch] = useState("");
+  const [manualFoodId, setManualFoodId] = useState("");
+  const [manualMealSlot, setManualMealSlot] = useState<MealSlot>("breakfast");
+  const [manualAmount, setManualAmount] = useState(1);
 
   useEffect(() => {
-    async function loadFoods() {
+    async function loadCoreData() {
       const supabase = createClient();
-
-      const { data, error } = await supabase
-        .from("foods")
-        .select("*")
-        .order("name");
-
-      if (error) {
-        console.error(error);
-        return;
-      }
-
-      setFoods((data || []) as Food[]);
+      const [{ data: foodData }, { data: profileData }] = await Promise.all([
+        supabase.from("foods").select("*").order("name"),
+        supabase.from("meal_profiles").select("*").order("name"),
+      ]);
+      const loadedProfiles = (profileData || []) as Profile[];
+      setFoods((foodData || []) as Food[]);
+      setProfiles(loadedProfiles);
+      const rememberedProfileId = window.localStorage.getItem("selected-profile-id");
+      setSelectedProfileId(
+        loadedProfiles.find((profile) => profile.id === rememberedProfileId)?.id ||
+          loadedProfiles[0]?.id ||
+          ""
+      );
     }
 
-    loadFoods();
+    loadCoreData();
   }, []);
 
   useEffect(() => {
-    async function loadTemplates() {
+    async function loadPlannerData() {
       if (!selectedProfileId) return;
-
-      const { data, error } = await createClient()
-        .from("meal_templates")
-        .select("*")
-        .or(`profile_id.eq.${selectedProfileId},profile_id.is.null`)
-        .order("name");
-
-      if (error) {
-        setSaveMessage(error.message);
-        return;
-      }
-
-      setMealTemplates((data || []) as MealTemplate[]);
+      const supabase = createClient();
+      const [{ data: templateData }, { data: itemData }, { data: ruleData }] = await Promise.all([
+        supabase
+          .from("meal_templates")
+          .select("*")
+          .or(`profile_id.eq.${selectedProfileId},profile_id.is.null`)
+          .order("name"),
+        supabase.from("meal_template_items").select("*"),
+        supabase.from("meal_rules").select("*").eq("profile_id", selectedProfileId),
+      ]);
+      setTemplates((templateData || []) as MealTemplate[]);
+      setTemplateItems((itemData || []) as MealTemplateItem[]);
+      setRules((ruleData || []) as MealRule[]);
     }
 
-    loadTemplates();
+    loadPlannerData();
   }, [selectedProfileId]);
 
   useEffect(() => {
-    async function loadProfiles() {
-      const { data, error } = await createClient().from("meal_profiles").select("*").order("name");
-      if (error) {
-        setSaveMessage(error.message);
-        return;
-      }
-
-      const loadedProfiles = (data || []) as Profile[];
-      setProfiles(loadedProfiles);
-
-      const rememberedProfileId = window.localStorage.getItem("selected-profile-id");
-      const nextProfileId =
-        loadedProfiles.find((profile) => profile.id === rememberedProfileId)?.id ||
-        loadedProfiles[0]?.id ||
-        "";
-      setSelectedProfileId(nextProfileId);
-    }
-
-    loadProfiles();
-
-    function handleProfileChange() {
-      const rememberedProfileId = window.localStorage.getItem("selected-profile-id") || "";
-      setSelectedProfileId(rememberedProfileId);
-    }
-
-    window.addEventListener("selected-profile-changed", handleProfileChange);
-    return () => window.removeEventListener("selected-profile-changed", handleProfileChange);
-  }, []);
-
-  useEffect(() => {
-    async function loadTodayFromDatabase() {
-      if (!selectedProfileId || foods.length === 0) return;
-
+    async function loadTodayPlan() {
+      if (!selectedProfileId) return;
+      setCheckedTodayPlan(false);
+      setPlan(null);
+      setMeals([]);
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from("daily_meals")
-        .select("food_id, amount, meal_slot")
+      const { data: planData } = await supabase
+        .from("daily_plans")
+        .select("*")
         .eq("profile_id", selectedProfileId)
-        .eq("meal_date", getTodayKey())
-        .order("created_at");
-
-      if (error) {
-        setSaveMessage(error.message);
-        return;
-      }
-
-      const restored = ((data || []) as DailyMealRow[])
-        .map((item) => {
-          const food = foods.find((candidate) => candidate.id === item.food_id);
-          return food
-            ? {
-                food,
-                amount: Number(item.amount),
-                mealSlot: item.meal_slot,
-              }
-            : null;
-        })
-        .filter((item): item is SelectedFood => item !== null);
-
-      setSelectedFoods(restored);
-      setHasLoadedDatabaseMeals(true);
-      setSaveMessage(restored.length ? "Loaded today's saved meals." : "No meals saved for today yet.");
-
-      const { data: logData, error: logError } = await supabase
-        .from("daily_logs")
-        .select("has_cardio, has_chocolate")
-        .eq("profile_id", selectedProfileId)
-        .eq("log_date", getTodayKey())
+        .eq("plan_date", getTodayKey())
         .maybeSingle();
 
-      if (logError) {
-        setSaveMessage(logError.message);
+      if (!planData) {
+        setCheckedTodayPlan(true);
         return;
       }
+      setPlan(planData as DailyPlan);
 
-      const dailyLog = logData as DailyLogRow | null;
-      setHasCardio(Boolean(dailyLog?.has_cardio));
-      setHasChocolate(Boolean(dailyLog?.has_chocolate));
+      const { data: mealData } = await supabase
+        .from("daily_plan_meals")
+        .select("*")
+        .eq("daily_plan_id", planData.id)
+        .order("meal_slot");
+      const loadedMeals = (mealData || []) as DailyPlanMeal[];
+      const { data: itemData } = await supabase
+        .from("daily_plan_items")
+        .select("*")
+        .in(
+          "daily_plan_meal_id",
+          loadedMeals.map((meal) => meal.id)
+        );
+      setMeals(
+        loadedMeals.map((meal) => ({
+          ...meal,
+          items: ((itemData || []) as DailyPlanItem[]).filter(
+            (item) => item.daily_plan_meal_id === meal.id
+          ),
+        }))
+      );
+      setCheckedTodayPlan(true);
     }
 
-    loadTodayFromDatabase();
-  }, [foods, selectedProfileId]);
+    loadTodayPlan();
+  }, [selectedProfileId]);
+
+  const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
+  const options = useMemo(
+    () => buildTemplateOptions(templates, templateItems, foods),
+    [templates, templateItems, foods]
+  );
+  const selectedFoods = useMemo<SelectedFood[]>(
+    () =>
+      meals.flatMap((meal) =>
+        meal.items
+          .map((item) => {
+            const food = foods.find((candidate) => candidate.id === item.food_id);
+            return food
+              ? { food, amount: Number(item.amount), mealSlot: meal.meal_slot }
+              : null;
+          })
+          .filter((item): item is SelectedFood => item !== null)
+      ),
+    [meals, foods]
+  );
+  const totals = roundMacros(calculateDailyTotals(selectedFoods));
+  const matchingFoods = foods
+    .filter((food) =>
+      `${food.name} ${food.brand || ""}`.toLowerCase().includes(foodSearch.toLowerCase())
+    )
+    .slice(0, 8);
 
   useEffect(() => {
-    if (foods.length === 0 || selectedProfileId) return;
+    if (!selectedProfile || !checkedTodayPlan || plan || options.length === 0) return;
+    void generatePlan();
+  }, [selectedProfile, checkedTodayPlan, plan, options.length]);
 
-    const saved = window.localStorage.getItem(getStorageKey());
-    if (!saved) return;
-
-    try {
-      const parsed = JSON.parse(saved) as StoredFoodSelection[];
-      const restored = parsed
-        .map((item) => {
-          const food = foods.find((candidate) => candidate.id === item.foodId);
-          return food
-            ? {
-                food,
-                amount: item.amount,
-                mealSlot: item.mealSlot,
-              }
-            : null;
-        })
-        .filter((item): item is SelectedFood => item !== null);
-
-      setSelectedFoods(restored);
-    } catch {
-      window.localStorage.removeItem(getStorageKey());
+  async function generatePlan() {
+    if (!selectedProfile) return;
+    const chosen = choosePlan(selectedProfile, options, rules);
+    if (chosen.some((entry) => !entry.selected)) {
+      setMessage("Create at least one available saved meal for every meal slot first.");
+      return;
     }
-  }, [foods]);
 
-  useEffect(() => {
-    if (selectedProfileId) return;
+    const supabase = createClient();
+    if (plan) {
+      await supabase.from("daily_plans").delete().eq("id", plan.id);
+    }
+    const { data: createdPlan, error } = await supabase
+      .from("daily_plans")
+      .insert({ profile_id: selectedProfile.id, plan_date: getTodayKey() })
+      .select("*")
+      .single();
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
 
-    const payload: StoredFoodSelection[] = selectedFoods.map((item) => ({
-      foodId: item.food.id,
-      amount: item.amount,
-      mealSlot: item.mealSlot,
+    const mealRows = chosen.map((entry) => ({
+      daily_plan_id: createdPlan.id,
+      meal_slot: entry.slot,
+      meal_template_id: entry.selected!.template.id,
+      meal_name: entry.selected!.template.name,
     }));
-
-    window.localStorage.setItem(getStorageKey(), JSON.stringify(payload));
-  }, [selectedFoods, selectedProfileId]);
-
-  const totals = useMemo(() => {
-    let calculated = calculateDailyTotals(selectedFoods);
-
-    if (hasChocolate) {
-      calculated = {
-        ...calculated,
-        calories: calculated.calories + 70,
-        protein: calculated.protein + 1,
-        carbs: calculated.carbs + 5,
-        fat: calculated.fat + 5,
-      };
-    }
-
-    return roundMacros(calculated);
-  }, [selectedFoods, hasChocolate]);
-
-  function addFood() {
-    const food = foods.find((item) => item.id === selectedFoodId);
-
-    if (!food) return;
-
-    setSelectedFoods((current) => [
-      ...current,
-      {
-        food,
-        amount,
-        mealSlot: activeMeal,
-      },
-    ]);
-
-    setAmount(food.serving_mode === "grams" ? Number(food.base_grams || 100) : 1);
+    const { data: createdMeals } = await supabase
+      .from("daily_plan_meals")
+      .insert(mealRows)
+      .select("*");
+    const rows = ((createdMeals || []) as DailyPlanMeal[]).flatMap((meal) => {
+      const selected = chosen.find((entry) => entry.slot === meal.meal_slot)?.selected;
+      return (selected?.items || []).map((item) => ({
+        daily_plan_meal_id: meal.id,
+        food_id: item.food_id,
+        amount: item.amount,
+      }));
+    });
+    const { data: createdItems } = await supabase.from("daily_plan_items").insert(rows).select("*");
+    setPlan(createdPlan as DailyPlan);
+    setMeals(
+      ((createdMeals || []) as DailyPlanMeal[]).map((meal) => ({
+        ...meal,
+        items: ((createdItems || []) as DailyPlanItem[]).filter(
+          (item) => item.daily_plan_meal_id === meal.id
+        ),
+      }))
+    );
+    setMessage("Today's meal plan is ready.");
   }
 
-  function removeItem(index: number) {
-    setSelectedFoods((current) => current.filter((_, i) => i !== index));
-  }
-
-  function updateItemAmount(index: number, nextAmount: number) {
-    setSelectedFoods((current) =>
-      current.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, amount: nextAmount } : item
+  async function replaceMeal(slot: MealSlot, option: TemplateOption) {
+    const meal = meals.find((candidate) => candidate.meal_slot === slot);
+    if (!meal) return;
+    const supabase = createClient();
+    await supabase.from("daily_plan_items").delete().eq("daily_plan_meal_id", meal.id);
+    const { data: updatedMeal } = await supabase
+      .from("daily_plan_meals")
+      .update({
+        meal_template_id: option.template.id,
+        meal_name: option.template.name,
+        completed: false,
+      })
+      .eq("id", meal.id)
+      .select("*")
+      .single();
+    const { data: newItems } = await supabase
+      .from("daily_plan_items")
+      .insert(
+        option.items.map((item) => ({
+          daily_plan_meal_id: meal.id,
+          food_id: item.food_id,
+          amount: item.amount,
+        }))
+      )
+      .select("*");
+    setMeals((current) =>
+      current.map((entry) =>
+        entry.id === meal.id
+          ? { ...(updatedMeal as DailyPlanMeal), items: (newItems || []) as DailyPlanItem[] }
+          : entry
       )
     );
   }
 
-  async function addSavedMeal() {
-    if (!selectedTemplateId) return;
-
-    const { data, error } = await createClient()
-      .from("meal_template_items")
-      .select("food_id, amount")
-      .eq("meal_template_id", selectedTemplateId);
-
-    if (error) {
-      setSaveMessage(error.message);
+  async function shuffleMeal(slot: MealSlot) {
+    const meal = meals.find((candidate) => candidate.meal_slot === slot);
+    const next = pickAlternative(meal?.meal_template_id || null, slot, options, rules);
+    if (!next) {
+      setMessage("No other meal option is available for that slot.");
       return;
     }
-
-    const items = (data || []) as Pick<MealTemplateItem, "food_id" | "amount">[];
-    const templateFoods = items
-      .map((item) => {
-        const food = foods.find((entry) => entry.id === item.food_id);
-        return food
-          ? {
-              food,
-              amount: Number(item.amount),
-              mealSlot: activeMeal,
-            }
-          : null;
-      })
-      .filter((item): item is SelectedFood => item !== null);
-
-    setSelectedFoods((current) => [...current, ...templateFoods]);
+    await replaceMeal(slot, next);
   }
 
-  async function saveDay() {
-    if (!selectedProfileId) {
-      setSaveMessage("Create or choose a profile first.");
-      return;
-    }
-
-    setIsSaving(true);
-    setSaveMessage("");
-
-    const supabase = createClient();
-    const { error: deleteError } = await supabase
-      .from("daily_meals")
-      .delete()
-      .eq("profile_id", selectedProfileId)
-      .eq("meal_date", getTodayKey());
-
-    if (deleteError) {
-      setSaveMessage(deleteError.message);
-      setIsSaving(false);
-      return;
-    }
-
-    if (selectedFoods.length > 0) {
-      const rows = selectedFoods.map((item) => ({
-        profile_id: selectedProfileId,
-        meal_date: getTodayKey(),
-        food_id: item.food.id,
-        meal_slot: item.mealSlot,
-        amount: item.amount,
-      }));
-
-      const { error: insertError } = await supabase.from("daily_meals").insert(rows);
-
-      if (insertError) {
-        setSaveMessage(insertError.message);
-        setIsSaving(false);
-        return;
-      }
-    }
-
-    const { error: logError } = await supabase.from("daily_logs").upsert(
-      {
-        profile_id: selectedProfileId,
-        log_date: getTodayKey(),
-        has_cardio: hasCardio,
-        has_chocolate: hasChocolate,
-      },
-      { onConflict: "profile_id,log_date" }
+  async function updateItemAmount(itemId: string, amount: number) {
+    await createClient().from("daily_plan_items").update({ amount }).eq("id", itemId);
+    setMeals((current) =>
+      current.map((meal) => ({
+        ...meal,
+        items: meal.items.map((item) => (item.id === itemId ? { ...item, amount } : item)),
+      }))
     );
-
-    if (logError) {
-      setSaveMessage(logError.message);
-      setIsSaving(false);
-      return;
-    }
-
-    setSaveMessage("Today's meals saved.");
-    setIsSaving(false);
   }
 
-  const selectedFood = foods.find((food) => food.id === selectedFoodId);
-  const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
-  const cardioCalories = hasCardio ? 150 : 0;
-  const dailyTargets = {
-    calories: (selectedProfile?.calorie_target ?? targets.calories) + cardioCalories,
-    protein: selectedProfile?.protein_target ?? targets.protein,
-    carbs: selectedProfile?.carbs_target ?? targets.carbs,
-    fat: selectedProfile?.fat_target ?? targets.fat,
-  };
-  const matchingFoods = foods
-    .filter((food) =>
-      `${food.name} ${food.brand || ""} ${food.category}`
-        .toLowerCase()
-        .includes(foodSearch.toLowerCase())
-    )
-    .slice(0, 8);
+  async function toggleCompleted(mealId: string, completed: boolean) {
+    await createClient().from("daily_plan_meals").update({ completed }).eq("id", mealId);
+    setMeals((current) =>
+      current.map((meal) => (meal.id === mealId ? { ...meal, completed } : meal))
+    );
+  }
 
-  function chooseFood(food: Food) {
-    setSelectedFoodId(food.id);
-    setFoodSearch(food.name);
-    setAmount(food.serving_mode === "grams" ? Number(food.base_grams || 100) : 1);
+  async function addManualFood() {
+    const meal = meals.find((candidate) => candidate.meal_slot === manualMealSlot);
+    if (!meal || !manualFoodId) return;
+    const { data } = await createClient()
+      .from("daily_plan_items")
+      .insert({
+        daily_plan_meal_id: meal.id,
+        food_id: manualFoodId,
+        amount: manualAmount,
+      })
+      .select("*")
+      .single();
+    setMeals((current) =>
+      current.map((entry) =>
+        entry.id === meal.id ? { ...entry, items: [...entry.items, data as DailyPlanItem] } : entry
+      )
+    );
+    setFoodSearch("");
+    setManualFoodId("");
+  }
+
+  async function removeItem(itemId: string) {
+    await createClient().from("daily_plan_items").delete().eq("id", itemId);
+    setMeals((current) =>
+      current.map((meal) => ({ ...meal, items: meal.items.filter((item) => item.id !== itemId) }))
+    );
   }
 
   return (
     <main className="app-shell">
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[1fr_380px]">
-        <section className="order-2 lg:order-1">
-          <p className="eyebrow mb-2 text-xs font-semibold">Fuel builder</p>
-          <h1 className="mb-4 text-4xl font-bold">Daily Meal Calculator</h1>
+        <section>
+          <p className="eyebrow mb-2 text-xs font-semibold">Daily planner</p>
+          <h1 className="mb-4 text-4xl font-bold">Today&apos;s Meal Plan</h1>
 
           <div className="surface mb-4 rounded-3xl p-5">
-            <div className="mb-4 flex items-center gap-3">
-              <Apple className="h-5 w-5 text-lime-300" />
-              <h2 className="text-xl font-semibold">Add Food</h2>
+            <div className="flex flex-wrap gap-3">
+              <button onClick={generatePlan} className="inline-flex items-center gap-2 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black">
+                <RefreshCw className="h-4 w-4" /> {plan ? "Redesign meal plan" : "Create meal plan"}
+              </button>
             </div>
+            {message && <p className="muted mt-3 text-sm">{message}</p>}
+          </div>
 
-            <div className="grid gap-3 md:grid-cols-4">
-              <select
-                className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
-                value={selectedProfileId}
-                onChange={(event) => {
-                  const id = event.target.value;
-                  setSelectedProfileId(id);
-                  window.localStorage.setItem("selected-profile-id", id);
-                }}
-              >
-                <option value="">Choose profile</option>
-                {profiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.name}
-                  </option>
-                ))}
+          <div className="surface mb-4 rounded-3xl p-5">
+            <h2 className="mb-4 text-xl font-semibold">Add food manually</h2>
+            <div className="grid gap-3 md:grid-cols-[160px_1fr_120px_auto]">
+              <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={manualMealSlot} onChange={(event) => setManualMealSlot(event.target.value as MealSlot)}>
+                {plannerSlots.map((slot) => <option key={slot.key} value={slot.key}>{slot.label}</option>)}
               </select>
-
-              <select
-                className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
-                value={activeMeal}
-                onChange={(e) => setActiveMeal(e.target.value as MealSlot)}
-              >
-                {mealSlots.map((slot) => (
-                  <option key={slot.key} value={slot.key}>
-                    {slot.label}
-                  </option>
-                ))}
-              </select>
-
               <div className="relative">
-                <input
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
-                  value={foodSearch}
-                  onChange={(event) => {
-                    setFoodSearch(event.target.value);
-                    setSelectedFoodId("");
-                  }}
-                  placeholder="Search food"
-                />
-
-                {foodSearch && !selectedFood && matchingFoods.length > 0 && (
+                <input className="w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white" placeholder="Search food" value={foodSearch} onChange={(event) => { setFoodSearch(event.target.value); setManualFoodId(""); }} />
+                {foodSearch && !manualFoodId && matchingFoods.length > 0 && (
                   <div className="surface absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-2xl">
                     {matchingFoods.map((food) => (
-                      <button
-                        key={food.id}
-                        type="button"
-                        onClick={() => chooseFood(food)}
-                        className="flex w-full items-center justify-between gap-3 border-b border-white/8 px-4 py-3 text-left text-sm last:border-b-0 hover:bg-white/8"
-                      >
-                        <span>{food.name}</span>
-                        <span className="muted">{food.serving_label}</span>
+                      <button key={food.id} onClick={() => { setManualFoodId(food.id); setFoodSearch(food.name); setManualAmount(food.serving_mode === "grams" ? Number(food.base_grams || 100) : 1); }} className="flex w-full justify-between px-4 py-3 text-left text-sm hover:bg-white/8">
+                        <span>{food.name}</span><span className="muted">{food.serving_label}</span>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
-
-              <input
-                className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
-                type="number"
-                min="0"
-                step={selectedFood?.serving_mode === "grams" ? "5" : "0.5"}
-                value={amount}
-                onChange={(e) => setAmount(Number(e.target.value))}
-                placeholder="Amount"
-              />
-            </div>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
-              <select
-                className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
-                value={selectedTemplateId}
-                onChange={(event) => setSelectedTemplateId(event.target.value)}
-              >
-                <option value="">Add saved meal</option>
-                {mealTemplates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={addSavedMeal}
-                className="rounded-2xl bg-white/8 px-5 py-3 font-semibold"
-              >
-                Add Meal
-              </button>
-            </div>
-
-            <p className="muted mt-2 text-sm">
-              {selectedFood?.serving_mode === "grams"
-                ? "Amount means grams."
-                : "Amount means number of units."}
-            </p>
-
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button
-                onClick={addFood}
-                className="inline-flex items-center gap-2 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black shadow-[0_0_24px_rgba(124,255,79,0.35)]"
-              >
-                <Plus className="h-4 w-4" />
-                Add Food
-              </button>
-              <button
-                onClick={saveDay}
-                disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-5 py-3 font-semibold text-white transition hover:bg-white/12 disabled:opacity-60"
-              >
-                <Save className="h-4 w-4" />
-                {isSaving ? "Saving..." : "Save Day"}
-              </button>
-              <span className="muted text-sm">
-                {selectedProfile
-                  ? hasLoadedDatabaseMeals
-                    ? saveMessage
-                    : "Loading today's meals..."
-                  : "Choose a profile to save daily logs."}
-              </span>
+              <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" value={manualAmount} onChange={(event) => setManualAmount(Number(event.target.value))} />
+              <button onClick={addManualFood} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold"><Plus className="h-4 w-4" />Add</button>
             </div>
           </div>
 
           <div className="space-y-4">
-            {mealSlots.map((slot) => {
-              const items = selectedFoods
-                .map((item, index) => ({ ...item, index }))
-                .filter((item) => item.mealSlot === slot.key);
-
+            {plannerSlots.map((slot) => {
+              const meal = meals.find((candidate) => candidate.meal_slot === slot.key);
+              const slotOptions = getSlotOptions(options, slot.key, rules);
               return (
                 <div key={slot.key} className="surface rounded-3xl p-5">
-                  <h2 className="text-xl font-semibold mb-3">{slot.label}</h2>
-
-                  {items.length === 0 ? (
-                    <p className="muted text-sm">No foods added yet.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {items.map((item) => (
-                        <div
-                          key={item.index}
-                          className="surface-strong flex items-center justify-between rounded-2xl p-3"
-                        >
-                          <div>
-                            <div className="font-medium">{item.food.name}</div>
-                            <label className="muted mt-2 flex items-center gap-2 text-sm">
-                              <input
-                                className="w-24 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white"
-                                type="number"
-                                min="0"
-                                step={item.food.serving_mode === "grams" ? "5" : "0.5"}
-                                value={item.amount}
-                                onChange={(event) =>
-                                  updateItemAmount(item.index, Number(event.target.value))
-                                }
-                              />
-                              <span>{item.food.serving_mode === "grams" ? "g" : "unit(s)"}</span>
-                            </label>
-                          </div>
-
-                          <button
-                            onClick={() => removeItem(item.index)}
-                            className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm text-slate-200"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Remove
-                          </button>
-                        </div>
-                      ))}
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-xl font-semibold">{slot.label}</h2>
+                      <p className="muted text-sm">{meal?.meal_name || "No meal selected yet."}</p>
                     </div>
+                    {meal && (
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => shuffleMeal(slot.key)} className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm"><Shuffle className="h-4 w-4" />Random swap</button>
+                        <select className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" value={meal.meal_template_id || ""} onChange={(event) => { const option = slotOptions.find((candidate) => candidate.template.id === event.target.value); if (option) void replaceMeal(slot.key, option); }}>
+                          {slotOptions.map((option) => <option key={option.template.id} value={option.template.id}>{option.template.name}</option>)}
+                        </select>
+                        <label className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm">
+                          <input type="checkbox" checked={meal.completed} onChange={(event) => toggleCompleted(meal.id, event.target.checked)} />
+                          <CheckCircle2 className="h-4 w-4" />Completed
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  {meal?.items.length ? (
+                    <div className="space-y-2">
+                      {meal.items.map((item) => {
+                        const food = foods.find((candidate) => candidate.id === item.food_id);
+                        if (!food) return null;
+                        return (
+                          <div key={item.id} className="surface-strong flex items-center justify-between gap-3 rounded-2xl p-3">
+                            <div>
+                              <div className="font-medium">{food.name}</div>
+                              <div className="muted text-sm">{food.serving_label}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input className="w-24 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" type="number" min="0" value={item.amount} onChange={(event) => updateItemAmount(item.id, Number(event.target.value))} />
+                              <button onClick={() => removeItem(item.id)} className="rounded-xl bg-white/6 p-2"><Trash2 className="h-4 w-4" /></button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="muted text-sm">Generate a plan to fill this meal.</p>
                   )}
                 </div>
               );
@@ -574,71 +404,16 @@ export default function CalculatorPage() {
           </div>
         </section>
 
-        <div className="order-1 lg:hidden">
-          <MacroSummary totals={totals} targets={dailyTargets} />
-        </div>
-
-        <aside className="order-3 space-y-4 lg:order-2">
-          <div className="hidden lg:block">
-            <MacroSummary totals={totals} targets={dailyTargets} />
-          </div>
-
-          <div className="surface rounded-3xl p-5">
-            <div className="mb-4 flex items-center gap-3">
-              <Dumbbell className="h-5 w-5 text-cyan-300" />
-              <h2 className="text-xl font-semibold">Daily Options</h2>
-            </div>
-
-            <label className="mb-3 flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={hasCardio}
-                onChange={(e) => setHasCardio(e.target.checked)}
-              />
-              30 minutes cardio today (+150 calories)
-            </label>
-
-            {hasCardio && (
-              <div className="mb-4 rounded-2xl border border-lime-300/15 bg-lime-300/10 p-3 text-sm text-lime-100">
-                Your daily calorie target is 150 calories higher today. Best options: 1 banana, 1 Oikos,
-                1 slice Ezekiel bread, 100 g cooked rice, or 150 g potato.
-              </div>
-            )}
-
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={hasChocolate}
-                onChange={(e) => setHasChocolate(e.target.checked)}
-              />
-              Add 70-calorie chocolate square
-            </label>
-
-            {hasChocolate && (
-              <div className="mt-3 rounded-2xl border border-amber-300/15 bg-amber-300/10 p-3 text-sm text-amber-100">
-                This adds 70 calories today. Remove 1 slice Ezekiel bread, half a
-                banana, or around 8 g oil if you want to keep calories equal.
-              </div>
-            )}
-          </div>
-
-          <div className="surface rounded-3xl p-5">
-            <div className="mb-4 flex items-center gap-3">
-              <TimerReset className="h-5 w-5 text-fuchsia-300" />
-              <h2 className="text-xl font-semibold">Fasting Window</h2>
-            </div>
-            <p className="text-sm">
-              Eating window: <strong>10:00 am – 8:00 pm</strong>
-            </p>
-            <p className="text-sm">
-              Fasting window: <strong>8:00 pm – 10:00 am</strong>
-            </p>
-
-            <div className="muted mt-3 text-sm">
-              Allowed: water, sparkling water, black coffee, plain tea,
-              zero-calorie electrolytes.
-            </div>
-          </div>
+        <aside className="space-y-4">
+          <MacroSummary
+            totals={totals}
+            targets={{
+              calories: selectedProfile?.calorie_target || 0,
+              protein: selectedProfile?.protein_target || 0,
+              carbs: selectedProfile?.carbs_target || 0,
+              fat: selectedProfile?.fat_target || 0,
+            }}
+          />
         </aside>
       </div>
     </main>

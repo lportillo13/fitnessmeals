@@ -1,0 +1,144 @@
+import { calculateFoodMacros } from "./macroCalculator";
+import type {
+  Food,
+  MacroTotals,
+  MealRule,
+  MealSlot,
+  MealTemplate,
+  MealTemplateItem,
+  Profile,
+} from "./types";
+
+export const plannerSlots: { key: MealSlot; label: string; share: number }[] = [
+  { key: "breakfast", label: "Breakfast", share: 0.22 },
+  { key: "snack_1", label: "Snack 1", share: 0.1 },
+  { key: "lunch", label: "Lunch", share: 0.28 },
+  { key: "snack_2", label: "Snack 2", share: 0.12 },
+  { key: "dinner", label: "Dinner", share: 0.28 },
+];
+
+export type TemplateOption = {
+  template: MealTemplate;
+  items: MealTemplateItem[];
+  macros: MacroTotals;
+};
+
+export function inferMealSlot(template: MealTemplate): MealSlot | null {
+  if (template.meal_slot) return template.meal_slot;
+
+  const name = template.name.toLowerCase();
+  if (name.includes("breakfast")) return "breakfast";
+  if (name.includes("snack 2")) return "snack_2";
+  if (name.includes("snack")) return "snack_1";
+  if (name.includes("lunch")) return "lunch";
+  if (name.includes("dinner")) return "dinner";
+  return null;
+}
+
+export function buildTemplateOptions(
+  templates: MealTemplate[],
+  templateItems: MealTemplateItem[],
+  foods: Food[]
+): TemplateOption[] {
+  const foodById = new Map(foods.map((food) => [food.id, food]));
+  const availableFoodIds = new Set(
+    foods.filter((food) => food.is_available !== false).map((food) => food.id)
+  );
+
+  return templates.reduce<TemplateOption[]>((result, template) => {
+      const items = templateItems.filter((item) => item.meal_template_id === template.id);
+      const slot = inferMealSlot(template);
+      if (!slot || items.length === 0) return result;
+      if (items.some((item) => !availableFoodIds.has(item.food_id))) return result;
+
+      const macros = items.reduce<MacroTotals>(
+        (totals, item) => {
+          const food = foodById.get(item.food_id);
+          if (!food) return totals;
+          const next = calculateFoodMacros(food, item.amount);
+          return {
+            calories: totals.calories + next.calories,
+            protein: totals.protein + next.protein,
+            carbs: totals.carbs + next.carbs,
+            fat: totals.fat + next.fat,
+            fiber: totals.fiber + next.fiber,
+          };
+        },
+        { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
+      );
+
+      result.push({
+        template: { ...template, meal_slot: slot },
+        items,
+        macros,
+      });
+      return result;
+    }, []);
+}
+
+export function getSlotOptions(
+  options: TemplateOption[],
+  slot: MealSlot,
+  rules: MealRule[]
+) {
+  const activeRules = rules.filter((rule) => rule.is_active && rule.meal_slot === slot);
+  const slotOptions = options.filter((option) => inferMealSlot(option.template) === slot);
+
+  if (activeRules.length === 0) return slotOptions;
+
+  return slotOptions.filter((option) =>
+    activeRules.every((rule) =>
+      option.items.some((item) => item.food_id === rule.required_food_id)
+    )
+  );
+}
+
+export function choosePlan(
+  profile: Profile,
+  options: TemplateOption[],
+  rules: MealRule[]
+) {
+  return plannerSlots.map((slot) => {
+    const slotOptions = getSlotOptions(options, slot.key, rules);
+    const target = slotTarget(profile, slot.share);
+    const ranked = [...slotOptions].sort(
+      (a, b) => scoreOption(a.macros, target) - scoreOption(b.macros, target)
+    );
+    const top = ranked.slice(0, Math.min(3, ranked.length));
+    const selected = top[Math.floor(Math.random() * Math.max(1, top.length))] || null;
+    return { slot: slot.key, selected, options: ranked };
+  });
+}
+
+export function pickAlternative(
+  currentTemplateId: string | null,
+  slot: MealSlot,
+  options: TemplateOption[],
+  rules: MealRule[]
+) {
+  const candidates = getSlotOptions(options, slot, rules).filter(
+    (option) => option.template.id !== currentTemplateId
+  );
+
+  if (candidates.length === 0) return null;
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+function slotTarget(profile: Profile, share: number): MacroTotals {
+  return {
+    calories: profile.calorie_target * share,
+    protein: profile.protein_target * share,
+    carbs: profile.carbs_target * share,
+    fat: profile.fat_target * share,
+    fiber: 0,
+  };
+}
+
+function scoreOption(macros: MacroTotals, target: MacroTotals) {
+  return (
+    Math.abs(macros.calories - target.calories) / Math.max(target.calories, 1) +
+    Math.abs(macros.protein - target.protein) / Math.max(target.protein, 1) +
+    Math.abs(macros.carbs - target.carbs) / Math.max(target.carbs, 1) +
+    Math.abs(macros.fat - target.fat) / Math.max(target.fat, 1)
+  );
+}

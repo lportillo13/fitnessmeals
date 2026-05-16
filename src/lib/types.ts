@@ -13,6 +13,7 @@ export type Food = {
   fat_g: number;
   fiber_g: number;
   is_public: boolean;
+  is_available: boolean;
 };
 
 export type MealSlot = "breakfast" | "snack_1" | "lunch" | "snack_2" | "dinner";
@@ -52,11 +53,44 @@ export type MealTemplate = {
   id: string;
   profile_id: string | null;
   name: string;
+  meal_slot: MealSlot | null;
 };
 
 export type MealTemplateItem = {
   id: string;
   meal_template_id: string;
+  food_id: string;
+  amount: number;
+};
+
+export type MealRule = {
+  id: string;
+  profile_id: string | null;
+  name: string;
+  meal_slot: MealSlot;
+  required_food_id: string;
+  is_active: boolean;
+};
+
+export type DailyPlan = {
+  id: string;
+  profile_id: string;
+  plan_date: string;
+  generated_at: string;
+};
+
+export type DailyPlanMeal = {
+  id: string;
+  daily_plan_id: string;
+  meal_slot: MealSlot;
+  meal_template_id: string | null;
+  meal_name: string;
+  completed: boolean;
+};
+
+export type DailyPlanItem = {
+  id: string;
+  daily_plan_meal_id: string;
   food_id: string;
   amount: number;
 };
