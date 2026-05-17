@@ -559,13 +559,6 @@ export default function CalculatorPage() {
               <button onClick={generatePlan} className="inline-flex items-center gap-2 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black">
                 <RefreshCw className="h-4 w-4" /> {plan ? "Redesign meal plan" : "Create meal plan"}
               </button>
-              <button
-                onClick={() => rebalanceFutureMeals(meals, -1)}
-                disabled={freeDay || meals.length === 0}
-                className="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-5 py-3 font-semibold disabled:opacity-50"
-              >
-                <RefreshCw className="h-4 w-4" /> Rebalance remaining
-              </button>
               <label className="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-4 py-3 text-sm font-semibold">
                 <input
                   type="checkbox"
