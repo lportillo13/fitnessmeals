@@ -297,7 +297,10 @@ export function rebalanceMealItems(
       if (!food) continue;
       const step = food.serving_mode === "grams" ? 5 : 0.25;
       for (const direction of [-1, 1]) {
-        const candidateAmount = Math.max(step, roundAmount(item.amount + step * direction, step));
+        const candidateAmount = Math.max(
+          minimumAmountForFood(food),
+          roundAmount(item.amount + step * direction, step)
+        );
         if (!isAmountAllowed(item, candidateAmount, food, rules)) continue;
         if (candidateAmount === item.amount) continue;
         const candidateItems = nextItems.map((candidate) =>
@@ -452,7 +455,10 @@ function tuneWholeDay(
         if (!food) continue;
         const step = food.serving_mode === "grams" ? 5 : 0.25;
         for (const direction of [-1, 1]) {
-          const candidateAmount = Math.max(step, roundAmount(item.amount + step * direction, step));
+          const candidateAmount = Math.max(
+            minimumAmountForFood(food),
+            roundAmount(item.amount + step * direction, step)
+          );
           if (
             !isAmountAllowed(
               item,
@@ -528,4 +534,12 @@ function isAmountAllowed(
     }
     return true;
   });
+}
+
+function minimumAmountForFood(food: Food) {
+  if (food.serving_mode === "unit") return 0.25;
+  if (food.category === "protein") return 50;
+  if (food.category === "carb") return 30;
+  if (food.category === "fat") return 5;
+  return 10;
 }

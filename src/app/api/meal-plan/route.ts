@@ -90,7 +90,7 @@ export async function POST(request: Request) {
             foods: slotFoods,
             active_rules_for_this_slot: slotRules,
             instruction:
-              "Create one sensible reusable meal for this slot using only available foods. Use realistic quantities and choose foods that belong together. Use at most one carb food. For lunch and dinner, total protein-food quantity must be between 100 and 150 grams. Make it useful inside the user's daily goal.",
+              "Create one sensible reusable meal for this slot using only available foods. Use realistic quantities and choose foods that belong together. Never use tiny gram quantities: proteins must be at least 50 g, carbs at least 30 g, fats at least 5 g, and other gram foods at least 10 g. Use at most one carb food. For lunch and dinner, total protein-food quantity must be between 100 and 150 grams. Make it useful inside the user's daily goal.",
           }),
         },
       ],
@@ -122,7 +122,12 @@ export async function POST(request: Request) {
     const invalidProteinAmount =
       (meal_slot === "lunch" || meal_slot === "dinner") &&
       (proteinAmount < 100 || proteinAmount > 150);
-    if (!usesOnlyAllowedFoods || carbCount > 1 || invalidProteinAmount) {
+    const hasUnrealisticAmounts = payload.items.some((item) => {
+      const food = slotFoodById.get(item.food_id);
+      if (!food) return true;
+      return food.serving_mode === "grams" && item.amount < minimumAmountForFood(food.category);
+    });
+    if (!usesOnlyAllowedFoods || carbCount > 1 || invalidProteinAmount || hasUnrealisticAmounts) {
       return Response.json({ error: "AI returned a meal that does not follow the planning rules." }, { status: 502 });
     }
 
@@ -133,4 +138,11 @@ export async function POST(request: Request) {
       error instanceof Error ? error.message : "Unknown server error during AI meal generation.";
     return Response.json({ error: message }, { status: 500 });
   }
+}
+
+function minimumAmountForFood(category: string) {
+  if (category === "protein") return 50;
+  if (category === "carb") return 30;
+  if (category === "fat") return 5;
+  return 10;
 }
