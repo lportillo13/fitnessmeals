@@ -51,8 +51,6 @@ export default function CalculatorPage() {
   const [manualMealSlot, setManualMealSlot] = useState<MealSlot>("breakfast");
   const [manualAmount, setManualAmount] = useState(1);
   const [openMealSlot, setOpenMealSlot] = useState<MealSlot>("breakfast");
-  const [mealStyle, setMealStyle] = useState("");
-  const [isGeneratingAiPlan, setIsGeneratingAiPlan] = useState(false);
 
   useEffect(() => {
     async function loadCoreData() {
@@ -239,91 +237,6 @@ export default function CalculatorPage() {
     setMessage("Today's meal plan is ready.");
   }
 
-  async function generateAiPlan() {
-    if (!selectedProfile) return;
-    setIsGeneratingAiPlan(true);
-    setMessage("");
-
-    const response = await fetch("/api/meal-plan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        profile: selectedProfile,
-        foods: foods.filter((food) => food.is_available !== false),
-        rules,
-        style: mealStyle,
-      }),
-    });
-    const payload = (await response.json()) as {
-      meals?: {
-        meal_slot: MealSlot;
-        meal_name: string;
-        items: { food_id: string; amount: number }[];
-      }[];
-      error?: string;
-    };
-
-    if (!response.ok || !payload.meals) {
-      setMessage(payload.error || "AI could not create a meal plan.");
-      setIsGeneratingAiPlan(false);
-      return;
-    }
-
-    const supabase = createClient();
-    let activePlan = plan;
-    if (activePlan) {
-      await supabase.from("daily_plan_meals").delete().eq("daily_plan_id", activePlan.id);
-    } else {
-      const { data: createdPlan, error } = await supabase
-        .from("daily_plans")
-        .insert({ profile_id: selectedProfile.id, plan_date: getTodayKey() })
-        .select("*")
-        .single();
-      if (error) {
-        setMessage(error.message);
-        setIsGeneratingAiPlan(false);
-        return;
-      }
-      activePlan = createdPlan as DailyPlan;
-    }
-
-    const { data: createdMeals } = await supabase
-      .from("daily_plan_meals")
-      .insert(
-        payload.meals.map((meal) => ({
-          daily_plan_id: activePlan!.id,
-          meal_slot: meal.meal_slot,
-          meal_template_id: null,
-          meal_name: meal.meal_name,
-        }))
-      )
-      .select("*");
-    const createdMealRows = (createdMeals || []) as DailyPlanMeal[];
-    const itemRows = createdMealRows.flatMap((meal) => {
-      const source = payload.meals?.find((candidate) => candidate.meal_slot === meal.meal_slot);
-      return (source?.items || []).map((item) => ({
-        daily_plan_meal_id: meal.id,
-        food_id: item.food_id,
-        amount: item.amount,
-      }));
-    });
-    const { data: createdItems } = await supabase
-      .from("daily_plan_items")
-      .insert(itemRows)
-      .select("*");
-    setPlan(activePlan);
-    setMeals(
-      createdMealRows.map((meal) => ({
-        ...meal,
-        items: ((createdItems || []) as DailyPlanItem[]).filter(
-          (item) => item.daily_plan_meal_id === meal.id
-        ),
-      }))
-    );
-    setOpenMealSlot("breakfast");
-    setMessage("AI meal plan created.");
-    setIsGeneratingAiPlan(false);
-  }
 
   async function replaceMeal(slot: MealSlot, option: TemplateOption) {
     const meal = meals.find((candidate) => candidate.meal_slot === slot);
@@ -520,19 +433,6 @@ export default function CalculatorPage() {
             <div className="flex flex-wrap gap-3">
               <button onClick={generatePlan} className="inline-flex items-center gap-2 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black">
                 <RefreshCw className="h-4 w-4" /> {plan ? "Redesign meal plan" : "Create meal plan"}
-              </button>
-              <input
-                className="min-w-60 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
-                placeholder="Style: Latin, simple, more variety..."
-                value={mealStyle}
-                onChange={(event) => setMealStyle(event.target.value)}
-              />
-              <button
-                onClick={generateAiPlan}
-                disabled={isGeneratingAiPlan}
-                className="rounded-2xl bg-white/8 px-5 py-3 font-semibold disabled:opacity-60"
-              >
-                {isGeneratingAiPlan ? "Designing..." : "AI redesign"}
               </button>
             </div>
             {message && <p className="muted mt-3 text-sm">{message}</p>}

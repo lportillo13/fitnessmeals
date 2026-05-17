@@ -30,6 +30,7 @@ const requestSchema = z.object({
       is_active: z.boolean(),
     })
   ),
+  meal_slot: z.enum(["breakfast", "snack_1", "lunch", "snack_2", "dinner"]),
   style: z.string().optional(),
 });
 
@@ -37,38 +38,22 @@ const responseSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
-    meals: {
+    meal_name: { type: "string" },
+    items: {
       type: "array",
-      minItems: 5,
-      maxItems: 5,
+      minItems: 1,
       items: {
         type: "object",
         additionalProperties: false,
         properties: {
-          meal_slot: {
-            type: "string",
-            enum: ["breakfast", "snack_1", "lunch", "snack_2", "dinner"],
-          },
-          meal_name: { type: "string" },
-          items: {
-            type: "array",
-            minItems: 1,
-            items: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                food_id: { type: "string" },
-                amount: { type: "number", minimum: 0.25 },
-              },
-              required: ["food_id", "amount"],
-            },
-          },
+          food_id: { type: "string" },
+          amount: { type: "number", minimum: 0.25 },
         },
-        required: ["meal_slot", "meal_name", "items"],
+        required: ["food_id", "amount"],
       },
     },
   },
-  required: ["meals"],
+  required: ["meal_name", "items"],
 } as const;
 
 export async function POST(request: Request) {
@@ -81,8 +66,9 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { profile, foods, rules, style } = parsed.data;
+  const { profile, foods, rules, meal_slot, style } = parsed.data;
   const allowedFoodIds = new Set(foods.map((food) => food.id));
+  const slotRules = rules.filter((rule) => rule.is_active && rule.meal_slot === meal_slot);
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const response = await client.responses.create({
     model: process.env.OPENAI_MEAL_MODEL || "gpt-5-mini",
@@ -90,43 +76,37 @@ export async function POST(request: Request) {
       {
         role: "system",
         content:
-          "You are a practical meal planner. Create meals that make culinary sense for a normal human to eat. Never create bizarre combinations such as tuna with banana or milk unless the user explicitly requests them. Use only the provided food IDs. Respect active rules. Return JSON only.",
+          "You are a practical meal planner. Create one meal that makes culinary sense for a normal human to eat. Never create bizarre combinations such as tuna with banana or milk unless the user explicitly requests them. Use only the provided food IDs. Respect active rules. Return JSON only.",
       },
       {
         role: "user",
         content: JSON.stringify({
-          goal: profile,
+          meal_slot,
+          day_goal: profile,
           style: style || "balanced, practical, varied",
           foods,
-          active_rules: rules.filter((rule) => rule.is_active),
-          meal_slots: ["breakfast", "snack_1", "lunch", "snack_2", "dinner"],
+          active_rules_for_this_slot: slotRules,
           instruction:
-            "Create one sensible meal for each slot using only available foods. Favor normal pairings, balanced meals, and realistic quantities. Snacks can be simple. Try to approximate the full-day macros across all five meals.",
+            "Create one sensible reusable meal for this slot using only available foods. Use realistic quantities and choose foods that belong together. Make it useful inside the user's daily goal.",
         }),
       },
     ],
     text: {
       format: {
         type: "json_schema",
-        name: "meal_plan",
+        name: "meal_template",
         strict: true,
         schema: responseSchema,
       },
     },
   });
 
-  const content = response.output_text;
-  const payload = JSON.parse(content) as {
-    meals: {
-      meal_slot: "breakfast" | "snack_1" | "lunch" | "snack_2" | "dinner";
-      meal_name: string;
-      items: { food_id: string; amount: number }[];
-    }[];
+  const payload = JSON.parse(response.output_text) as {
+    meal_name: string;
+    items: { food_id: string; amount: number }[];
   };
 
-  const usesOnlyAllowedFoods = payload.meals.every((meal) =>
-    meal.items.every((item) => allowedFoodIds.has(item.food_id))
-  );
+  const usesOnlyAllowedFoods = payload.items.every((item) => allowedFoodIds.has(item.food_id));
   if (!usesOnlyAllowedFoods) {
     return Response.json({ error: "AI returned a food that is not available." }, { status: 502 });
   }
