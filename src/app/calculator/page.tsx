@@ -272,6 +272,28 @@ export default function CalculatorPage() {
     );
   }
 
+  async function replaceMealAndRebalance(slot: MealSlot, option: TemplateOption) {
+    await replaceMeal(slot, option);
+    const changedIndex = plannerSlots.findIndex((entry) => entry.key === slot);
+    const refreshedMeals = meals.map((meal) =>
+      meal.meal_slot === slot
+        ? {
+            ...meal,
+            meal_template_id: option.template.id,
+            meal_name: option.template.name,
+            completed: false,
+            items: option.items.map((item) => ({
+              id: item.id,
+              daily_plan_meal_id: meal.id,
+              food_id: item.food_id,
+              amount: item.amount,
+            })),
+          }
+        : meal
+    );
+    await rebalanceFutureMeals(refreshedMeals, changedIndex);
+  }
+
   async function shuffleMeal(slot: MealSlot) {
     const meal = meals.find((candidate) => candidate.meal_slot === slot);
     const next = pickAlternative(meal?.meal_template_id || null, slot, options, rules);
@@ -296,14 +318,19 @@ export default function CalculatorPage() {
     if (!changedMeal || !selectedProfile) return;
 
     const changedIndex = plannerSlots.findIndex((slot) => slot.key === changedMeal.meal_slot);
-    const futureMeals = nextMeals.filter(
+    await rebalanceFutureMeals(nextMeals, changedIndex);
+  }
+
+  async function rebalanceFutureMeals(sourceMeals: PlannedMeal[], changedIndex: number) {
+    if (!selectedProfile) return;
+    const futureMeals = sourceMeals.filter(
       (meal) =>
         plannerSlots.findIndex((slot) => slot.key === meal.meal_slot) > changedIndex &&
         !meal.completed
     );
     if (futureMeals.length === 0) return;
 
-    const lockedMeals = nextMeals.filter(
+    const lockedMeals = sourceMeals.filter(
       (meal) =>
         plannerSlots.findIndex((slot) => slot.key === meal.meal_slot) <= changedIndex ||
         meal.completed
@@ -479,7 +506,7 @@ export default function CalculatorPage() {
                     {meal && (
                       <div className="flex flex-wrap gap-2">
                         <button onClick={() => shuffleMeal(slot.key)} className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm"><Shuffle className="h-4 w-4" />Random swap</button>
-                        <select className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" value={meal.meal_template_id || ""} onChange={(event) => { const option = slotOptions.find((candidate) => candidate.template.id === event.target.value); if (option) void replaceMeal(slot.key, option); }}>
+                        <select className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" value={meal.meal_template_id || ""} onChange={(event) => { const option = slotOptions.find((candidate) => candidate.template.id === event.target.value); if (option) void replaceMealAndRebalance(slot.key, option); }}>
                           {slotOptions.map((option) => <option key={option.template.id} value={option.template.id}>{option.template.name}</option>)}
                         </select>
                         <label className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm">
