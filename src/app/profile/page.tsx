@@ -211,50 +211,8 @@ export default function ProfilePage() {
         items: { food_id: string; amount: number }[];
       }[][] = [];
 
-      for (let index = 0; index < batchSpecs.length; index += 3) {
-        const chunk = batchSpecs.slice(index, index + 3);
-        const chunkPayloads = await Promise.all(
-          chunk.map(async (batch) => {
-          const response = await fetch("/api/nutrition-plan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              profile: profileData,
-              foods,
-              goal_instruction: form.goalInstruction,
-              ...batch,
-            }),
-          });
-          const rawBody = await response.text();
-          let payload: {
-            meals?: {
-              meal_name: string;
-              meal_slot: "breakfast" | "snack_1" | "lunch" | "dinner";
-              items: { food_id: string; amount: number }[];
-            }[];
-            error?: string;
-            details?: unknown;
-          };
-          try {
-            payload = JSON.parse(rawBody) as typeof payload;
-          } catch {
-            throw new Error(
-              response.status === 504
-                ? "Meal generation timed out at the server gateway."
-                : "The server returned an unexpected response during meal generation."
-            );
-          }
-          if (!response.ok || !payload.meals) {
-            throw new Error(
-              payload.error
-                ? `${payload.error}${payload.details ? ` ${JSON.stringify(payload.details)}` : ""}`
-                : "AI could not create the nutrition plan."
-            );
-          }
-          return payload.meals;
-          })
-        );
-        batchPayloads.push(...chunkPayloads);
+      for (const batch of batchSpecs) {
+        batchPayloads.push(await generateMealBatch(batch, profileData, foods, form.goalInstruction));
       }
       const generatedMeals = batchPayloads.flat();
 
@@ -504,4 +462,62 @@ function GenerationModal({
       </div>
     </div>
   );
+}
+
+async function generateMealBatch(
+  batch: { meal_slot: "breakfast" | "snack_1" | "lunch" | "dinner"; count: number },
+  profile: unknown,
+  foods: unknown[],
+  goalInstruction: string
+) {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await fetch("/api/nutrition-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile,
+          foods,
+          goal_instruction: goalInstruction,
+          ...batch,
+        }),
+      });
+      const rawBody = await response.text();
+      let payload: {
+        meals?: {
+          meal_name: string;
+          meal_slot: "breakfast" | "snack_1" | "lunch" | "dinner";
+          items: { food_id: string; amount: number }[];
+        }[];
+        error?: string;
+        details?: unknown;
+      };
+      try {
+        payload = JSON.parse(rawBody) as typeof payload;
+      } catch {
+        throw new Error(
+          response.status === 504
+            ? "Meal generation timed out at the server gateway."
+            : `The server returned an unexpected ${response.status} response during meal generation.`
+        );
+      }
+      if (!response.ok || !payload.meals) {
+        throw new Error(
+          payload.error
+            ? `${payload.error}${payload.details ? ` ${JSON.stringify(payload.details)}` : ""}`
+            : "AI could not create the nutrition plan."
+        );
+      }
+      return payload.meals;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Meal generation failed.");
+      if (attempt < 3) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1200 * attempt));
+      }
+    }
+  }
+
+  throw lastError || new Error("Meal generation failed.");
 }
