@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Save, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Save, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import type { Food, MealRule, MealSlot, MealTemplate, Profile } from "@/lib/types";
+import type { Food, MealRule, MealSlot, MealTemplate, MealTemplateItem, Profile } from "@/lib/types";
 import { jazminMealTemplates, jazminPlanFoods } from "@/lib/jazminPlan";
 
 type DraftItem = {
@@ -16,6 +16,7 @@ export default function MealsPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [templates, setTemplates] = useState<MealTemplate[]>([]);
+  const [templateItems, setTemplateItems] = useState<MealTemplateItem[]>([]);
   const [templateName, setTemplateName] = useState("");
   const [templateSlot, setTemplateSlot] = useState<MealSlot>("breakfast");
   const [draftItems, setDraftItems] = useState<DraftItem[]>([]);
@@ -34,6 +35,9 @@ export default function MealsPage() {
   const [mealStyle, setMealStyle] = useState("");
   const [isGeneratingAiMeal, setIsGeneratingAiMeal] = useState(false);
   const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual");
+  const [mealSearch, setMealSearch] = useState("");
+  const [mealSlotFilter, setMealSlotFilter] = useState<MealSlot | "all">("all");
+  const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadInitialData() {
@@ -61,13 +65,18 @@ export default function MealsPage() {
     async function loadTemplatesAndRules() {
       if (!selectedProfileId) return;
       const supabase = createClient();
-      const [{ data: templateData, error: templateError }, { data: ruleData, error: ruleError }] =
+      const [
+        { data: templateData, error: templateError },
+        { data: itemData, error: itemError },
+        { data: ruleData, error: ruleError },
+      ] =
         await Promise.all([
           supabase
             .from("meal_templates")
             .select("*")
             .or(`profile_id.eq.${selectedProfileId},profile_id.is.null`)
             .order("name"),
+          supabase.from("meal_template_items").select("*"),
           supabase
             .from("meal_rules")
             .select("*")
@@ -75,12 +84,13 @@ export default function MealsPage() {
             .order("created_at"),
         ]);
 
-      if (templateError || ruleError) {
-        setMessage(templateError?.message || ruleError?.message || "Could not load meals.");
+      if (templateError || itemError || ruleError) {
+        setMessage(templateError?.message || itemError?.message || ruleError?.message || "Could not load meals.");
         return;
       }
 
       setTemplates((templateData || []) as MealTemplate[]);
+      setTemplateItems((itemData || []) as MealTemplateItem[]);
       setRules((ruleData || []) as MealRule[]);
     }
 
@@ -138,13 +148,17 @@ export default function MealsPage() {
       amount: item.amount,
     }));
 
-    const { error: itemsError } = await supabase.from("meal_template_items").insert(rows);
+    const { data: createdItems, error: itemsError } = await supabase
+      .from("meal_template_items")
+      .insert(rows)
+      .select("*");
     if (itemsError) {
       setMessage(itemsError.message);
       return;
     }
 
     setTemplates((current) => [...current, template as MealTemplate]);
+    setTemplateItems((current) => [...current, ...((createdItems || []) as MealTemplateItem[])]);
     setTemplateName("");
     setTemplateSlot("breakfast");
     setDraftItems([]);
@@ -249,6 +263,7 @@ export default function MealsPage() {
       return;
     }
     setTemplates((current) => current.filter((template) => template.id !== templateId));
+    setTemplateItems((current) => current.filter((item) => item.meal_template_id !== templateId));
     setMessage("Meal deleted.");
   }
 
@@ -372,6 +387,8 @@ export default function MealsPage() {
       .eq("profile_id", selectedProfileId)
       .order("name");
     setTemplates((data || []) as MealTemplate[]);
+    const { data: refreshedItems } = await supabase.from("meal_template_items").select("*");
+    setTemplateItems((refreshedItems || []) as MealTemplateItem[]);
     const shake = foodByName.get("Protein shake + creatine");
     if (shake) {
       const defaultRules: Omit<MealRule, "id" | "is_active">[] = [
@@ -425,12 +442,29 @@ export default function MealsPage() {
     setIsImporting(false);
   }
 
+  const visibleTemplates = templates.filter((template) => {
+    const matchesSlot = mealSlotFilter === "all" || template.meal_slot === mealSlotFilter;
+    const matchesSearch = template.name.toLowerCase().includes(mealSearch.toLowerCase());
+    return matchesSlot && matchesSearch;
+  });
+
+  const mealCounts = {
+    breakfast: templates.filter((template) => template.meal_slot === "breakfast").length,
+    snack_1: templates.filter((template) => template.meal_slot === "snack_1").length,
+    lunch: templates.filter((template) => template.meal_slot === "lunch").length,
+    snack_2: templates.filter((template) => template.meal_slot === "snack_2").length,
+    dinner: templates.filter((template) => template.meal_slot === "dinner").length,
+  };
+
   return (
     <main className="app-shell">
-      <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[1fr_340px]">
+      <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[390px_1fr]">
         <section className="surface rounded-3xl p-5">
           <p className="eyebrow mb-2 text-xs font-semibold">Meal builder</p>
-          <h1 className="mb-4 text-4xl font-bold">Saved Meals</h1>
+          <h1 className="mb-2 text-3xl font-bold">Create meal</h1>
+          <p className="muted mb-4 text-sm">
+            Build one meal at a time here. Review and manage all saved meals on the right.
+          </p>
 
           <div className="mb-4 flex gap-2">
             <button
@@ -522,32 +556,100 @@ export default function MealsPage() {
           {message && <p className="muted mt-3 text-sm">{message}</p>}
         </section>
 
-        <aside className="surface rounded-3xl p-5">
-          <h2 className="mb-4 text-2xl font-bold">Saved meals</h2>
-          <div className="space-y-2">
-            {templates.map((template) => (
-              <div key={template.id} className="surface-strong flex items-center justify-between gap-3 rounded-2xl p-3">
-                <div>
-                  <div>{template.name}</div>
-                  <div className="muted text-xs">{template.meal_slot || "Unassigned"}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={template.is_default_daily}
-                      onChange={() => toggleDefaultDaily(template)}
-                    />
-                    Default daily
-                  </label>
-                  <button onClick={() => deleteTemplate(template.id)} className="rounded-xl bg-white/6 p-2">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
+        <section className="surface rounded-3xl p-5">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="eyebrow mb-2 text-xs font-semibold">Meal library</p>
+              <h2 className="text-3xl font-bold">Saved meals</h2>
+            </div>
+            <div className="muted text-sm">{visibleTemplates.length} shown · {templates.length} total</div>
           </div>
-        </aside>
+
+          <div className="mb-4 grid gap-3 md:grid-cols-[1fr_180px]">
+            <input
+              className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+              placeholder="Search saved meals"
+              value={mealSearch}
+              onChange={(event) => setMealSearch(event.target.value)}
+            />
+            <select
+              className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+              value={mealSlotFilter}
+              onChange={(event) => setMealSlotFilter(event.target.value as MealSlot | "all")}
+            >
+              <option value="all">All meal types</option>
+              <option value="breakfast">Breakfast</option>
+              <option value="snack_1">Snack 1</option>
+              <option value="lunch">Lunch</option>
+              <option value="snack_2">Snack 2</option>
+              <option value="dinner">Dinner</option>
+            </select>
+          </div>
+
+          <div className="mb-4 grid gap-2 sm:grid-cols-5">
+            <CountPill label="Breakfast" value={mealCounts.breakfast} />
+            <CountPill label="Snack 1" value={mealCounts.snack_1} />
+            <CountPill label="Lunch" value={mealCounts.lunch} />
+            <CountPill label="Snack 2" value={mealCounts.snack_2} />
+            <CountPill label="Dinner" value={mealCounts.dinner} />
+          </div>
+
+          <div className="space-y-3">
+            {visibleTemplates.map((template) => {
+              const items = templateItems.filter((item) => item.meal_template_id === template.id);
+              const isExpanded = expandedTemplateId === template.id;
+              return (
+                <article key={template.id} className="surface-strong rounded-2xl p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedTemplateId(isExpanded ? null : template.id)}
+                      className="flex min-w-0 flex-1 items-start justify-between gap-3 text-left"
+                    >
+                      <div>
+                        <div className="font-semibold">{template.name}</div>
+                        <div className="muted mt-1 text-xs">
+                          {formatSlot(template.meal_slot)} · {items.length} item{items.length === 1 ? "" : "s"}
+                        </div>
+                      </div>
+                      {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
+                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={template.is_default_daily}
+                          onChange={() => toggleDefaultDaily(template)}
+                        />
+                        Default daily
+                      </label>
+                      <button onClick={() => deleteTemplate(template.id)} className="rounded-xl bg-white/6 p-2">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="mt-3 space-y-2 border-t border-white/8 pt-3">
+                      {items.map((item) => {
+                        const food = foods.find((entry) => entry.id === item.food_id);
+                        if (!food) return null;
+                        return (
+                          <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-black/15 px-3 py-2 text-sm">
+                            <span>{food.name}</span>
+                            <span className="muted">
+                              {item.amount} {food.serving_mode === "grams" ? "g" : food.serving_label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </section>
       </div>
 
       <div className="mx-auto mt-4 grid max-w-6xl gap-4 lg:grid-cols-[1fr_340px]">
@@ -605,6 +707,20 @@ export default function MealsPage() {
       </div>
     </main>
   );
+}
+
+function CountPill({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl bg-white/6 px-3 py-3 text-center">
+      <div className="text-lg font-bold">{value}</div>
+      <div className="muted text-xs">{label}</div>
+    </div>
+  );
+}
+
+function formatSlot(slot: MealSlot | null) {
+  if (!slot) return "Unassigned";
+  return slot.replace("_", " ");
 }
 
 function getDescriptiveTemplateName(
