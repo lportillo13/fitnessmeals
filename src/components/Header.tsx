@@ -80,76 +80,135 @@ export default function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-black/35 backdrop-blur-xl">
-      <div className="mx-auto max-w-6xl px-4 py-4">
-        <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 text-xl font-bold">
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-black/55 backdrop-blur-xl">
+      <div className="mx-auto max-w-6xl px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <Link href="/" className="flex min-w-0 items-center gap-3 text-lg font-bold md:text-xl">
             <span className="grid h-10 w-10 place-items-center rounded-2xl bg-lime-300 text-black shadow-[0_0_24px_rgba(124,255,79,0.45)]">
               <Dumbbell className="h-5 w-5" />
             </span>
-            <span>PJ Meal Calculator</span>
+            <span className="truncate">PJ Meal Calculator</span>
           </Link>
 
-          <button
-            type="button"
-            onClick={() => setIsOpen((current) => !current)}
-            className="grid h-11 w-11 place-items-center rounded-2xl bg-white/5 text-white md:hidden"
-            aria-label={isOpen ? "Close menu" : "Open menu"}
-          >
-            {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          <div className="hidden items-center gap-2 md:flex">
+            <nav className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1">
+              {navItems.map((item) => {
+                const isActive = pathname === item.href;
+                const Icon = item.icon;
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex items-center gap-2 whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium transition ${
+                      isActive
+                        ? "bg-lime-300 text-black shadow-[0_0_20px_rgba(124,255,79,0.25)]"
+                        : "text-slate-300 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className={item.label === "Calculator" ? "hidden lg:inline" : ""}>
+                      {item.label}
+                    </span>
+                  </Link>
+                );
+              })}
+            </nav>
+
+            {profiles.length > 0 && (
+              <select
+                className="max-w-32 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white"
+                value={selectedProfileId}
+                onChange={(event) => changeProfile(event.target.value)}
+              >
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button
+              type="button"
+              onClick={toggleFast}
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${
+                isFasting
+                  ? "bg-rose-300 text-black"
+                  : "bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              {isFasting ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              <span className="hidden lg:inline">{isFasting ? "End fast" : "Start fast"}</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 md:hidden">
+            <button
+              type="button"
+              onClick={toggleFast}
+              className={`grid h-11 w-11 place-items-center rounded-2xl ${
+                isFasting ? "bg-rose-300 text-black" : "bg-white/5 text-white"
+              }`}
+              aria-label={isFasting ? "End fast" : "Start fast"}
+            >
+              {isFasting ? <Square className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsOpen((current) => !current)}
+              className="grid h-11 w-11 place-items-center rounded-2xl bg-white/5 text-white"
+              aria-label={isOpen ? "Close menu" : "Open menu"}
+            >
+              {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
         </div>
 
-        <nav
-          className={`${
-            isOpen ? "mt-4 flex" : "hidden"
-          } flex-col gap-2 md:flex md:flex-row md:items-center md:justify-end`}
-        >
-          {navItems.map((item) => {
-            const isActive = pathname === item.href;
-            const Icon = item.icon;
+        {isOpen && (
+          <div className="surface mt-3 rounded-3xl p-3 md:hidden">
+            <nav className="grid grid-cols-2 gap-2">
+              {navItems.map((item) => {
+                const isActive = pathname === item.href;
+                const Icon = item.icon;
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setIsOpen(false)}
-                className={`flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition ${
-                  isActive
-                    ? "bg-lime-300 text-black shadow-[0_0_20px_rgba(124,255,79,0.35)]"
-                    : "bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            );
-          })}
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setIsOpen(false)}
+                    className={`flex items-center gap-2 rounded-2xl px-3 py-3 text-sm font-medium transition ${
+                      isActive
+                        ? "bg-lime-300 text-black"
+                        : "bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
 
-          {profiles.length > 0 && (
-            <select
-              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white"
-              value={selectedProfileId}
-              onChange={(event) => changeProfile(event.target.value)}
-            >
-              {profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name}
-                </option>
-              ))}
-            </select>
-          )}
-          <button
-            type="button"
-            onClick={toggleFast}
-            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${
-              isFasting ? "bg-rose-300 text-black" : "bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            {isFasting ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            {isFasting ? "End fast" : "Start fast"}
-          </button>
-        </nav>
+            <div className="mt-3 grid gap-2">
+              {profiles.length > 0 && (
+                <label className="grid gap-1 text-sm">
+                  <span className="muted px-1">Profile</span>
+                  <select
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white"
+                    value={selectedProfileId}
+                    onChange={(event) => changeProfile(event.target.value)}
+                  >
+                    {profiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </header>
   );
