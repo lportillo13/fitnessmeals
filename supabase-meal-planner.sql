@@ -1,7 +1,8 @@
 create extension if not exists pgcrypto;
 
 alter table public.foods
-  add column if not exists is_available boolean not null default true;
+  add column if not exists is_available boolean not null default true,
+  add column if not exists max_amount numeric;
 
 alter table public.meal_templates
   add column if not exists meal_slot text

@@ -11,7 +11,7 @@ import type { Food } from "@/lib/types";
 
 type EditableFoodFields = Pick<
   Food,
-  "calories" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g"
+  "calories" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g" | "max_amount"
 >;
 
 type FoodDraft = Omit<Food, "id" | "user_id" | "is_public">;
@@ -48,6 +48,7 @@ const fallbackDraft: FoodDraft = {
   fat_g: 0,
   fiber_g: 0,
   is_available: true,
+  max_amount: null,
 };
 
 export default function FoodsPage() {
@@ -104,6 +105,7 @@ export default function FoodsPage() {
       carbs_g: food.carbs_g,
       fat_g: food.fat_g,
       fiber_g: food.fiber_g,
+      max_amount: food.max_amount,
     });
     setMessage("");
   }
@@ -456,7 +458,8 @@ export default function FoodsPage() {
                         <th className="p-3">Protein</th>
                         <th className="p-3">Carbs</th>
                         <th className="p-3">Fat</th>
-                        <th className="p-3">Fiber</th>
+                <th className="p-3">Fiber</th>
+                        <th className="p-3">Max</th>
                         <th className="p-3">Have it?</th>
                         <th className="p-3">Mode</th>
                         <th className="p-3">Actions</th>
@@ -476,6 +479,16 @@ export default function FoodsPage() {
                       onChange={(value) =>
                         setEditValues((current) =>
                           current ? { ...current, calories: value } : current
+                        )
+                      }
+                    />
+                    <MacroCell
+                      value={isEditing ? editValues?.max_amount ?? undefined : food.max_amount ?? undefined}
+                      editing={isEditing}
+                      suffix={food.serving_mode === "grams" ? " g" : ""}
+                      onChange={(value) =>
+                        setEditValues((current) =>
+                          current ? { ...current, max_amount: value } : current
                         )
                       }
                     />
@@ -609,7 +622,7 @@ function MacroCell({
           type="number"
           min="0"
           step="0.1"
-          value={value ?? 0}
+          value={value ?? ""}
           onChange={(event) => onChange(Number(event.target.value))}
         />
       ) : (

@@ -481,6 +481,9 @@ function isAmountAllowed(
   food: Food,
   rules: MealRule[]
 ) {
+  if (food.max_amount != null && amount > food.max_amount) {
+    return false;
+  }
   return rules.every((rule) => {
     if (rule.rule_type === "exact_food_amount" && rule.required_food_id === item.food_id) {
       return amount === Number(rule.amount || 0);

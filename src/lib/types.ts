@@ -14,6 +14,7 @@ export type Food = {
   fiber_g: number;
   is_public: boolean;
   is_available: boolean;
+  max_amount: number | null;
 };
 
 export type MealSlot = "breakfast" | "snack_1" | "lunch" | "snack_2" | "dinner";
