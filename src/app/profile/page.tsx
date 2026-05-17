@@ -199,34 +199,44 @@ export default function ProfilePage() {
         return;
       }
 
-      const response = await fetch("/api/nutrition-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          profile: profileData,
-          foods,
-          goal_instruction: form.goalInstruction,
-        }),
-      });
-      const payload = (await response.json()) as {
-        plan_summary?: string;
-        meals?: {
-          meal_name: string;
-          meal_slot: "breakfast" | "snack_1" | "lunch" | "dinner";
-          items: { food_id: string; amount: number }[];
-        }[];
-        error?: string;
-        details?: unknown;
-      };
-      if (!response.ok || !payload.meals) {
-        setMessage(
-          payload.error
-            ? `${payload.error}${payload.details ? ` ${JSON.stringify(payload.details)}` : ""}`
-            : "AI could not create the nutrition plan."
-        );
-        setGenerationState("idle");
-        return;
-      }
+      const batchSpecs = [
+        { meal_slot: "breakfast" as const, count: 5 },
+        { meal_slot: "lunch" as const, count: 5 },
+        { meal_slot: "dinner" as const, count: 5 },
+        { meal_slot: "snack_1" as const, count: 3 },
+      ];
+      const batchPayloads = await Promise.all(
+        batchSpecs.map(async (batch) => {
+          const response = await fetch("/api/nutrition-plan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              profile: profileData,
+              foods,
+              goal_instruction: form.goalInstruction,
+              ...batch,
+            }),
+          });
+          const payload = (await response.json()) as {
+            meals?: {
+              meal_name: string;
+              meal_slot: "breakfast" | "snack_1" | "lunch" | "dinner";
+              items: { food_id: string; amount: number }[];
+            }[];
+            error?: string;
+            details?: unknown;
+          };
+          if (!response.ok || !payload.meals) {
+            throw new Error(
+              payload.error
+                ? `${payload.error}${payload.details ? ` ${JSON.stringify(payload.details)}` : ""}`
+                : "AI could not create the nutrition plan."
+            );
+          }
+          return payload.meals;
+        })
+      );
+      const generatedMeals = batchPayloads.flat();
 
       const { data: oldTemplates } = await supabase
         .from("meal_templates")
@@ -237,7 +247,7 @@ export default function ProfilePage() {
         await supabase.from("meal_templates").delete().in("id", oldTemplateIds);
       }
 
-      for (const meal of payload.meals) {
+      for (const meal of generatedMeals) {
         const { data: template, error } = await supabase
           .from("meal_templates")
           .insert({
@@ -261,14 +271,16 @@ export default function ProfilePage() {
       }
 
       setMessage(
-        payload.plan_summary
-          ? `Nutrition plan created. ${payload.plan_summary}`
-          : "Nutrition plan created."
+        "Nutrition plan created. Built a fresh goal-based meal library from your available foods and profile targets."
       );
       setGenerationState("success");
       await loadProfiles();
-    } catch {
-      setMessage("Nutrition plan generation failed before the server returned a response.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Nutrition plan generation failed before the server returned a response."
+      );
       setGenerationState("idle");
     } finally {
       setIsGeneratingPlan(false);
