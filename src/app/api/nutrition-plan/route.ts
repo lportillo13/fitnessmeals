@@ -18,7 +18,7 @@ const requestSchema = z.object({
   }),
   goal_instruction: z.string().min(3),
   meal_slot: z.enum(["breakfast", "snack_1", "lunch", "dinner"]),
-  count: z.number().int().min(1).max(5),
+  count: z.number().int().min(1).max(1),
   foods: z.array(
     z.object({
       id: z.string(),

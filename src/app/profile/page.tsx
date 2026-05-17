@@ -200,13 +200,21 @@ export default function ProfilePage() {
       }
 
       const batchSpecs = [
-        { meal_slot: "breakfast" as const, count: 5 },
-        { meal_slot: "lunch" as const, count: 5 },
-        { meal_slot: "dinner" as const, count: 5 },
-        { meal_slot: "snack_1" as const, count: 3 },
+        ...Array.from({ length: 5 }, () => ({ meal_slot: "breakfast" as const, count: 1 })),
+        ...Array.from({ length: 5 }, () => ({ meal_slot: "lunch" as const, count: 1 })),
+        ...Array.from({ length: 5 }, () => ({ meal_slot: "dinner" as const, count: 1 })),
+        ...Array.from({ length: 3 }, () => ({ meal_slot: "snack_1" as const, count: 1 })),
       ];
-      const batchPayloads = await Promise.all(
-        batchSpecs.map(async (batch) => {
+      const batchPayloads: {
+        meal_name: string;
+        meal_slot: "breakfast" | "snack_1" | "lunch" | "dinner";
+        items: { food_id: string; amount: number }[];
+      }[][] = [];
+
+      for (let index = 0; index < batchSpecs.length; index += 3) {
+        const chunk = batchSpecs.slice(index, index + 3);
+        const chunkPayloads = await Promise.all(
+          chunk.map(async (batch) => {
           const response = await fetch("/api/nutrition-plan", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -217,7 +225,8 @@ export default function ProfilePage() {
               ...batch,
             }),
           });
-          const payload = (await response.json()) as {
+          const rawBody = await response.text();
+          let payload: {
             meals?: {
               meal_name: string;
               meal_slot: "breakfast" | "snack_1" | "lunch" | "dinner";
@@ -226,6 +235,15 @@ export default function ProfilePage() {
             error?: string;
             details?: unknown;
           };
+          try {
+            payload = JSON.parse(rawBody) as typeof payload;
+          } catch {
+            throw new Error(
+              response.status === 504
+                ? "Meal generation timed out at the server gateway."
+                : "The server returned an unexpected response during meal generation."
+            );
+          }
           if (!response.ok || !payload.meals) {
             throw new Error(
               payload.error
@@ -234,8 +252,10 @@ export default function ProfilePage() {
             );
           }
           return payload.meals;
-        })
-      );
+          })
+        );
+        batchPayloads.push(...chunkPayloads);
+      }
       const generatedMeals = batchPayloads.flat();
 
       const { data: oldTemplates } = await supabase
