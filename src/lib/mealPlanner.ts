@@ -76,48 +76,6 @@ export function buildTemplateOptions(
     }, []);
 }
 
-export function buildSyntheticOptions(foods: Food[]): TemplateOption[] {
-  const availableFoods = foods.filter((food) => food.is_available !== false);
-  const proteins = availableFoods.filter((food) => food.category === "protein");
-  const carbs = availableFoods.filter((food) =>
-    ["carb", "fruit"].includes(food.category)
-  );
-  const fats = availableFoods.filter((food) => food.category === "fat");
-  const extras = availableFoods.filter((food) =>
-    ["other", "snack"].includes(food.category)
-  );
-
-  const options: TemplateOption[] = [];
-  const mealSlots: MealSlot[] = ["breakfast", "snack_1", "lunch", "snack_2", "dinner"];
-
-  for (const slot of mealSlots) {
-    if (slot.startsWith("snack")) {
-      for (const protein of proteins.slice(0, 8)) {
-        const items = [makeItem(protein)];
-        for (const carb of carbs.slice(0, 5)) {
-          options.push(makeSyntheticOption(slot, [makeItem(protein), makeItem(carb)], foods));
-        }
-        options.push(makeSyntheticOption(slot, items, foods));
-      }
-      continue;
-    }
-
-    for (const protein of proteins.slice(0, 8)) {
-      for (const carb of carbs.slice(0, 8)) {
-        const baseItems = [makeItem(protein), makeItem(carb)];
-        options.push(makeSyntheticOption(slot, baseItems, foods));
-        for (const fat of fats.slice(0, 5)) {
-          options.push(makeSyntheticOption(slot, [...baseItems, makeItem(fat)], foods));
-        }
-        for (const extra of extras.slice(0, 4)) {
-          options.push(makeSyntheticOption(slot, [...baseItems, makeItem(extra)], foods));
-        }
-      }
-    }
-  }
-
-  return options;
-}
 
 export function getSlotOptions(
   options: TemplateOption[],
@@ -429,32 +387,6 @@ function roundAmount(value: number, step: number) {
   return Math.round(value / step) * step;
 }
 
-function makeItem(food: Food): MealTemplateItem {
-  return {
-    id: `synthetic-item-${food.id}`,
-    meal_template_id: `synthetic-${food.id}`,
-    food_id: food.id,
-    amount: food.serving_mode === "grams" ? Number(food.base_grams || 100) : 1,
-  };
-}
-
-function makeSyntheticOption(
-  slot: MealSlot,
-  items: MealTemplateItem[],
-  foods: Food[]
-): TemplateOption {
-  const foodById = new Map(foods.map((food) => [food.id, food]));
-  return {
-    template: {
-      id: `synthetic-${slot}-${items.map((item) => item.food_id).join("-")}`,
-      profile_id: null,
-      name: `Generated ${slot.replace("_", " ")}`,
-      meal_slot: slot,
-    },
-    items,
-    macros: totalForItems(items, foodById),
-  };
-}
 
 function tuneWholeDay(
   selections: TemplateOption[],
