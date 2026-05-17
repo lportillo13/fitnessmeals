@@ -252,6 +252,35 @@ export default function MealsPage() {
     setMessage("Meal deleted.");
   }
 
+  async function toggleDefaultDaily(template: MealTemplate) {
+    const supabase = createClient();
+    const nextValue = !template.is_default_daily;
+    if (nextValue && template.meal_slot) {
+      await supabase
+        .from("meal_templates")
+        .update({ is_default_daily: false })
+        .eq("profile_id", selectedProfileId)
+        .eq("meal_slot", template.meal_slot);
+    }
+    const { error } = await supabase
+      .from("meal_templates")
+      .update({ is_default_daily: nextValue })
+      .eq("id", template.id);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setTemplates((current) =>
+      current.map((entry) =>
+        entry.id === template.id
+          ? { ...entry, is_default_daily: nextValue }
+          : nextValue && entry.meal_slot === template.meal_slot && entry.profile_id === selectedProfileId
+            ? { ...entry, is_default_daily: false }
+            : entry
+      )
+    );
+  }
+
   async function importJazminPlan() {
     if (!selectedProfileId) {
       setMessage("Choose Jazmin's profile first.");
@@ -497,11 +526,24 @@ export default function MealsPage() {
           <h2 className="mb-4 text-2xl font-bold">Saved meals</h2>
           <div className="space-y-2">
             {templates.map((template) => (
-              <div key={template.id} className="surface-strong flex items-center justify-between rounded-2xl p-3">
-                <span>{template.name}</span>
-                <button onClick={() => deleteTemplate(template.id)} className="rounded-xl bg-white/6 p-2">
-                  <Trash2 className="h-4 w-4" />
-                </button>
+              <div key={template.id} className="surface-strong flex items-center justify-between gap-3 rounded-2xl p-3">
+                <div>
+                  <div>{template.name}</div>
+                  <div className="muted text-xs">{template.meal_slot || "Unassigned"}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={template.is_default_daily}
+                      onChange={() => toggleDefaultDaily(template)}
+                    />
+                    Default daily
+                  </label>
+                  <button onClick={() => deleteTemplate(template.id)} className="rounded-xl bg-white/6 p-2">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

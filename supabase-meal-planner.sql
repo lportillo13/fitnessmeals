@@ -6,7 +6,11 @@ alter table public.foods
 
 alter table public.meal_templates
   add column if not exists meal_slot text
-  check (meal_slot in ('breakfast', 'snack_1', 'lunch', 'snack_2', 'dinner'));
+  check (meal_slot in ('breakfast', 'snack_1', 'lunch', 'snack_2', 'dinner')),
+  add column if not exists is_default_daily boolean not null default false;
+
+alter table public.meal_profiles
+  add column if not exists goal_instruction text;
 
 create table if not exists public.meal_rules (
   id uuid primary key default gen_random_uuid(),

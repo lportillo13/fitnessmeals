@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Activity, Save, Target, UserPlus } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Activity, Sparkles, Save, Target, UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { calculateGoalTargets } from "@/lib/goalCalculator";
 import type { Profile } from "@/lib/types";
@@ -17,6 +17,7 @@ type ProfileForm = {
   stepsPerDay: number;
   goalLossLb: number;
   goalDate: string;
+  goalInstruction: string;
 };
 
 const defaultForm: ProfileForm = {
@@ -29,19 +30,17 @@ const defaultForm: ProfileForm = {
   stepsPerDay: 5000,
   goalLossLb: 15,
   goalDate: "2026-08-01",
+  goalInstruction: "",
 };
 
 export default function ProfilePage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [form, setForm] = useState<ProfileForm>(defaultForm);
   const [message, setMessage] = useState("");
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const result = calculateGoalTargets(form);
 
-  useEffect(() => {
-    loadProfiles();
-  }, []);
-
-  async function loadProfiles() {
+  const loadProfiles = useCallback(async () => {
     const { data, error } = await createClient().from("meal_profiles").select("*").order("name");
     if (error) {
       setMessage(error.message);
@@ -59,13 +58,20 @@ export default function ProfilePage() {
     if (rememberedProfile) {
       loadProfile(rememberedProfile, false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadProfiles();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [loadProfiles]);
 
   function updateField(field: keyof ProfileForm, value: string) {
     setForm((current) => ({
       ...current,
       [field]:
-        field === "name" || field === "sex" || field === "goalDate"
+        field === "name" || field === "sex" || field === "goalDate" || field === "goalInstruction"
           ? value
           : Number(value),
     }));
@@ -83,6 +89,7 @@ export default function ProfilePage() {
       stepsPerDay: profile.steps_per_day,
       goalLossLb: profile.goal_loss_lb,
       goalDate: profile.goal_date,
+      goalInstruction: profile.goal_instruction || "",
     });
     window.localStorage.setItem("selected-profile-id", profile.id);
     window.dispatchEvent(new Event("selected-profile-changed"));
@@ -102,6 +109,7 @@ export default function ProfilePage() {
       steps_per_day: form.stepsPerDay,
       goal_loss_lb: form.goalLossLb,
       goal_date: form.goalDate,
+      goal_instruction: form.goalInstruction,
       calorie_target: result.calorieTarget,
       protein_target: result.proteinTarget,
       carbs_target: result.carbsTarget,
@@ -130,6 +138,97 @@ export default function ProfilePage() {
   function startNewProfile() {
     setForm({ ...defaultForm, name: "" });
     setMessage("New profile ready.");
+  }
+
+  async function generateNutritionPlan() {
+    if (!form.id) {
+      setMessage("Save this profile first, then generate the nutrition plan.");
+      return;
+    }
+    if (!form.goalInstruction.trim()) {
+      setMessage("Write a goal instruction first.");
+      return;
+    }
+
+    setIsGeneratingPlan(true);
+    setMessage("");
+    const supabase = createClient();
+    try {
+      const [{ data: foodData }, { data: profileData }] = await Promise.all([
+        supabase.from("foods").select("*").eq("is_available", true).order("name"),
+        supabase.from("meal_profiles").select("*").eq("id", form.id).single(),
+      ]);
+      const foods = foodData || [];
+      if (foods.length === 0) {
+        setMessage("Mark at least one food as available before generating a plan.");
+        return;
+      }
+
+      const response = await fetch("/api/nutrition-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile: profileData,
+          foods,
+          goal_instruction: form.goalInstruction,
+        }),
+      });
+      const payload = (await response.json()) as {
+        plan_summary?: string;
+        meals?: {
+          meal_name: string;
+          meal_slot: "breakfast" | "snack_1" | "lunch" | "dinner";
+          items: { food_id: string; amount: number }[];
+        }[];
+        error?: string;
+      };
+      if (!response.ok || !payload.meals) {
+        setMessage(payload.error || "AI could not create the nutrition plan.");
+        return;
+      }
+
+      const { data: oldTemplates } = await supabase
+        .from("meal_templates")
+        .select("id")
+        .eq("profile_id", form.id);
+      const oldTemplateIds = (oldTemplates || []).map((template) => template.id);
+      if (oldTemplateIds.length > 0) {
+        await supabase.from("meal_templates").delete().in("id", oldTemplateIds);
+      }
+
+      for (const meal of payload.meals) {
+        const { data: template, error } = await supabase
+          .from("meal_templates")
+          .insert({
+            profile_id: form.id,
+            name: meal.meal_name,
+            meal_slot: meal.meal_slot,
+          })
+          .select()
+          .single();
+        if (error) {
+          setMessage(error.message);
+          return;
+        }
+        await supabase.from("meal_template_items").insert(
+          meal.items.map((item) => ({
+            meal_template_id: template.id,
+            food_id: item.food_id,
+            amount: item.amount,
+          }))
+        );
+      }
+
+      setMessage(
+        payload.plan_summary
+          ? `Nutrition plan created. ${payload.plan_summary}`
+          : "Nutrition plan created."
+      );
+    } catch {
+      setMessage("Nutrition plan generation failed before the server returned a response.");
+    } finally {
+      setIsGeneratingPlan(false);
+    }
   }
 
   return (
@@ -182,6 +281,15 @@ export default function ProfilePage() {
                 onChange={(e) => updateField("goalDate", e.target.value)}
               />
             </label>
+            <label className="block">
+              <span className="text-sm font-medium">Goal instruction</span>
+              <textarea
+                className="mt-1 min-h-28 w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                placeholder="I want to lose fat and lose 5 pounds while keeping meals simple and high protein."
+                value={form.goalInstruction}
+                onChange={(e) => updateField("goalInstruction", e.target.value)}
+              />
+            </label>
           </div>
 
           <button
@@ -190,6 +298,14 @@ export default function ProfilePage() {
           >
             <Save className="h-4 w-4" />
             Save Profile
+          </button>
+          <button
+            onClick={generateNutritionPlan}
+            disabled={isGeneratingPlan}
+            className="ml-3 mt-4 inline-flex items-center gap-2 rounded-2xl bg-white/8 px-5 py-3 font-semibold disabled:opacity-60"
+          >
+            <Sparkles className="h-4 w-4" />
+            {isGeneratingPlan ? "Generating..." : "Generate nutrition plan"}
           </button>
           {message && <p className="muted mt-3 text-sm">{message}</p>}
         </section>

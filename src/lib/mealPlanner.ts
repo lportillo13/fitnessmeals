@@ -83,7 +83,10 @@ export function getSlotOptions(
   rules: MealRule[]
 ) {
   const activeRules = rules.filter((rule) => rule.is_active && rule.meal_slot === slot);
-  const slotOptions = options.filter((option) => inferMealSlot(option.template) === slot);
+  const slotOptions = options.filter((option) => {
+    const inferredSlot = inferMealSlot(option.template);
+    return inferredSlot === slot || (slot === "snack_2" && inferredSlot === "snack_1");
+  });
 
   if (activeRules.length === 0) return slotOptions;
 
@@ -120,10 +123,19 @@ export function chooseOptimizedDayPlan(
   rules: MealRule[],
   foods: Food[]
 ) {
-  const slotOptions = plannerSlots.map((slot) => ({
-    slot: slot.key,
-    options: getSlotOptions(options, slot.key, rules).slice(0, 8),
-  }));
+  const slotOptions = plannerSlots.map((slot) => {
+    const candidates = getSlotOptions(options, slot.key, rules);
+    const dailyDefault = candidates.find(
+      (option) =>
+        option.template.is_default_daily &&
+        (option.template.meal_slot === slot.key ||
+          (slot.key === "snack_2" && option.template.meal_slot === "snack_1"))
+    );
+    return {
+      slot: slot.key,
+      options: dailyDefault ? [dailyDefault] : candidates.slice(0, 8),
+    };
+  });
 
   if (slotOptions.some((entry) => entry.options.length === 0)) {
     return plannerSlots.map((slot) => ({

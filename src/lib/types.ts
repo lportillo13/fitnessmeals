@@ -44,6 +44,7 @@ export type Profile = {
   steps_per_day: number;
   goal_loss_lb: number;
   goal_date: string;
+  goal_instruction: string | null;
   calorie_target: number;
   protein_target: number;
   carbs_target: number;
@@ -55,6 +56,7 @@ export type MealTemplate = {
   profile_id: string | null;
   name: string;
   meal_slot: MealSlot | null;
+  is_default_daily: boolean;
 };
 
 export type MealTemplateItem = {
