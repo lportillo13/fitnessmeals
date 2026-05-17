@@ -11,7 +11,7 @@ import type { Food } from "@/lib/types";
 
 type EditableFoodFields = Pick<
   Food,
-  "calories" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g" | "max_amount"
+  "calories" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g" | "max_amount" | "allowed_meal_slots"
 >;
 
 type FoodDraft = Omit<Food, "id" | "user_id" | "is_public">;
@@ -49,6 +49,7 @@ const fallbackDraft: FoodDraft = {
   fiber_g: 0,
   is_available: true,
   max_amount: null,
+  allowed_meal_slots: ["breakfast", "snack_1", "lunch", "snack_2", "dinner"],
 };
 
 export default function FoodsPage() {
@@ -106,6 +107,7 @@ export default function FoodsPage() {
       fat_g: food.fat_g,
       fiber_g: food.fiber_g,
       max_amount: food.max_amount,
+      allowed_meal_slots: food.allowed_meal_slots || ["breakfast", "snack_1", "lunch", "snack_2", "dinner"],
     });
     setMessage("");
   }
@@ -460,78 +462,24 @@ export default function FoodsPage() {
                         <th className="p-3">Fat</th>
                 <th className="p-3">Fiber</th>
                         <th className="p-3">Max</th>
+                        <th className="p-3">Meals</th>
                         <th className="p-3">Have it?</th>
                         <th className="p-3">Mode</th>
                         <th className="p-3">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {categoryFoods.map((food) => {
-                const isEditing = editingFoodId === food.id;
-
-                return (
+                      {categoryFoods.map((food) => (
                   <tr key={food.id} className="border-t border-white/8">
                     <td className="p-3 font-medium">{food.name}</td>
                     <td className="p-3">{food.serving_label}</td>
-                    <MacroCell
-                      value={isEditing ? editValues?.calories : food.calories}
-                      editing={isEditing}
-                      onChange={(value) =>
-                        setEditValues((current) =>
-                          current ? { ...current, calories: value } : current
-                        )
-                      }
-                    />
-                    <MacroCell
-                      value={isEditing ? editValues?.max_amount ?? undefined : food.max_amount ?? undefined}
-                      editing={isEditing}
-                      suffix={food.serving_mode === "grams" ? " g" : ""}
-                      onChange={(value) =>
-                        setEditValues((current) =>
-                          current ? { ...current, max_amount: value } : current
-                        )
-                      }
-                    />
-                    <MacroCell
-                      value={isEditing ? editValues?.protein_g : food.protein_g}
-                      editing={isEditing}
-                      suffix=" g"
-                      onChange={(value) =>
-                        setEditValues((current) =>
-                          current ? { ...current, protein_g: value } : current
-                        )
-                      }
-                    />
-                    <MacroCell
-                      value={isEditing ? editValues?.carbs_g : food.carbs_g}
-                      editing={isEditing}
-                      suffix=" g"
-                      onChange={(value) =>
-                        setEditValues((current) =>
-                          current ? { ...current, carbs_g: value } : current
-                        )
-                      }
-                    />
-                    <MacroCell
-                      value={isEditing ? editValues?.fat_g : food.fat_g}
-                      editing={isEditing}
-                      suffix=" g"
-                      onChange={(value) =>
-                        setEditValues((current) =>
-                          current ? { ...current, fat_g: value } : current
-                        )
-                      }
-                    />
-                    <MacroCell
-                      value={isEditing ? editValues?.fiber_g : food.fiber_g}
-                      editing={isEditing}
-                      suffix=" g"
-                      onChange={(value) =>
-                        setEditValues((current) =>
-                          current ? { ...current, fiber_g: value } : current
-                        )
-                      }
-                    />
+                    <td className="p-3">{food.calories}</td>
+                    <td className="p-3">{food.protein_g} g</td>
+                    <td className="p-3">{food.carbs_g} g</td>
+                    <td className="p-3">{food.fat_g} g</td>
+                    <td className="p-3">{food.fiber_g} g</td>
+                    <td className="p-3">{food.max_amount ?? "—"}{food.max_amount != null && food.serving_mode === "grams" ? " g" : ""}</td>
+                    <td className="p-3 text-xs">{formatAllowedSlots(food.allowed_meal_slots)}</td>
                     <td className="p-3">
                       <button
                         type="button"
@@ -547,27 +495,6 @@ export default function FoodsPage() {
                     </td>
                     <td className="p-3">{food.serving_mode}</td>
                     <td className="p-3">
-                      {isEditing ? (
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => saveFood(food.id)}
-                            disabled={savingFoodId === food.id}
-                            className="rounded-xl bg-lime-300 p-2 text-black disabled:opacity-60"
-                            aria-label={`Save ${food.name}`}
-                          >
-                            <Save className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={cancelEditing}
-                            className="rounded-xl border border-white/10 p-2"
-                            aria-label={`Cancel editing ${food.name}`}
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ) : (
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -586,11 +513,9 @@ export default function FoodsPage() {
                             <X className="h-4 w-4" />
                           </button>
                         </div>
-                      )}
                     </td>
                   </tr>
-                );
-                      })}
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -599,40 +524,84 @@ export default function FoodsPage() {
           ))}
         </div>
       </div>
+      {editingFoodId && editValues && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
+          <div className="surface w-full max-w-2xl rounded-3xl p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-2xl font-bold">Edit food</h2>
+              <button onClick={cancelEditing} className="rounded-xl bg-white/6 p-2">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <ModalNumber label="Calories" value={editValues.calories} onChange={(value) => setEditValues((current) => current ? { ...current, calories: value } : current)} />
+              <ModalNumber label="Max amount" value={editValues.max_amount ?? 0} onChange={(value) => setEditValues((current) => current ? { ...current, max_amount: value || null } : current)} />
+              <ModalNumber label="Protein g" value={editValues.protein_g} onChange={(value) => setEditValues((current) => current ? { ...current, protein_g: value } : current)} />
+              <ModalNumber label="Carbs g" value={editValues.carbs_g} onChange={(value) => setEditValues((current) => current ? { ...current, carbs_g: value } : current)} />
+              <ModalNumber label="Fat g" value={editValues.fat_g} onChange={(value) => setEditValues((current) => current ? { ...current, fat_g: value } : current)} />
+              <ModalNumber label="Fiber g" value={editValues.fiber_g} onChange={(value) => setEditValues((current) => current ? { ...current, fiber_g: value } : current)} />
+            </div>
+            <div className="mt-4">
+              <div className="mb-2 text-sm font-medium">Allowed meals</div>
+              <div className="flex flex-wrap gap-2">
+                {mealSlotOptions.map((slot) => (
+                  <label key={slot.value} className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={editValues.allowed_meal_slots.includes(slot.value)}
+                      onChange={(event) =>
+                        setEditValues((current) =>
+                          current
+                            ? {
+                                ...current,
+                                allowed_meal_slots: event.target.checked
+                                  ? [...current.allowed_meal_slots, slot.value]
+                                  : current.allowed_meal_slots.filter((value) => value !== slot.value),
+                              }
+                            : current
+                        )
+                      }
+                    />
+                    {slot.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => saveFood(editingFoodId)}
+              disabled={savingFoodId === editingFoodId}
+              className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black disabled:opacity-60"
+            >
+              <Save className="h-4 w-4" /> Save food
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
 
-function MacroCell({
-  value,
-  editing,
-  suffix = "",
-  onChange,
-}: {
-  value: number | undefined;
-  editing: boolean;
-  suffix?: string;
-  onChange: (value: number) => void;
-}) {
+const mealSlotOptions = [
+  { value: "breakfast", label: "Breakfast" },
+  { value: "snack_1", label: "Snack 1" },
+  { value: "lunch", label: "Lunch" },
+  { value: "snack_2", label: "Snack 2" },
+  { value: "dinner", label: "Dinner" },
+] as const;
+
+function ModalNumber({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
   return (
-    <td className="p-3">
-      {editing ? (
-        <input
-          className="w-24 rounded-xl border border-white/10 bg-white/5 p-2 text-white"
-          type="number"
-          min="0"
-          step="0.1"
-          value={value ?? ""}
-          onChange={(event) => onChange(Number(event.target.value))}
-        />
-      ) : (
-        <>
-          {value}
-          {suffix}
-        </>
-      )}
-    </td>
+    <label className="block">
+      <span className="text-sm font-medium">{label}</span>
+      <input className="mt-1 w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="0.1" value={value} onChange={(event) => onChange(Number(event.target.value))} />
+    </label>
   );
+}
+
+function formatAllowedSlots(slots: Food["allowed_meal_slots"]) {
+  if (!slots?.length) return "None";
+  return slots.map((slot) => slot.replace("_", " ")).join(", ");
 }
 
 function numberOrZero(value: number | undefined) {

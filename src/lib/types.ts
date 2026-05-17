@@ -15,6 +15,7 @@ export type Food = {
   is_public: boolean;
   is_available: boolean;
   max_amount: number | null;
+  allowed_meal_slots: MealSlot[];
 };
 
 export type MealSlot = "breakfast" | "snack_1" | "lunch" | "snack_2" | "dinner";

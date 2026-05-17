@@ -20,6 +20,7 @@ const requestSchema = z.object({
       protein_g: z.number(),
       carbs_g: z.number(),
       fat_g: z.number(),
+      allowed_meal_slots: z.array(z.enum(["breakfast", "snack_1", "lunch", "snack_2", "dinner"])),
     })
   ),
   rules: z.array(
@@ -68,7 +69,8 @@ export async function POST(request: Request) {
     }
 
     const { profile, foods, rules, meal_slot, style } = parsed.data;
-    const allowedFoodIds = new Set(foods.map((food) => food.id));
+    const slotFoods = foods.filter((food) => food.allowed_meal_slots.includes(meal_slot));
+    const allowedFoodIds = new Set(slotFoods.map((food) => food.id));
     const slotRules = rules.filter((rule) => rule.is_active && rule.meal_slot === meal_slot);
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await client.responses.create({
@@ -85,10 +87,10 @@ export async function POST(request: Request) {
             meal_slot,
             day_goal: profile,
             style: style || "balanced, practical, varied",
-            foods,
+            foods: slotFoods,
             active_rules_for_this_slot: slotRules,
             instruction:
-              "Create one sensible reusable meal for this slot using only available foods. Use realistic quantities and choose foods that belong together. Make it useful inside the user's daily goal.",
+              "Create one sensible reusable meal for this slot using only available foods. Use realistic quantities and choose foods that belong together. Use at most one carb food. For lunch and dinner, total protein-food quantity must be between 100 and 150 grams. Make it useful inside the user's daily goal.",
           }),
         },
       ],
@@ -108,8 +110,20 @@ export async function POST(request: Request) {
     };
 
     const usesOnlyAllowedFoods = payload.items.every((item) => allowedFoodIds.has(item.food_id));
-    if (!usesOnlyAllowedFoods) {
-      return Response.json({ error: "AI returned a food that is not available." }, { status: 502 });
+    const slotFoodById = new Map(slotFoods.map((food) => [food.id, food]));
+    const carbCount = payload.items.filter(
+      (item) => slotFoodById.get(item.food_id)?.category === "carb"
+    ).length;
+    const proteinAmount = payload.items.reduce((sum, item) => {
+      return slotFoodById.get(item.food_id)?.category === "protein"
+        ? sum + item.amount
+        : sum;
+    }, 0);
+    const invalidProteinAmount =
+      (meal_slot === "lunch" || meal_slot === "dinner") &&
+      (proteinAmount < 100 || proteinAmount > 150);
+    if (!usesOnlyAllowedFoods || carbCount > 1 || invalidProteinAmount) {
+      return Response.json({ error: "AI returned a meal that does not follow the planning rules." }, { status: 502 });
     }
 
     return Response.json(payload);

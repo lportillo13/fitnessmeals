@@ -29,6 +29,7 @@ const requestSchema = z.object({
       protein_g: z.number(),
       carbs_g: z.number(),
       fat_g: z.number(),
+      allowed_meal_slots: z.array(z.enum(["breakfast", "snack_1", "lunch", "snack_2", "dinner"])),
     })
   ),
 });
@@ -98,6 +99,7 @@ export async function POST(request: Request) {
 
     const mealBatches = await Promise.all(
       batchRequests.map(async ({ meal_slot, count, label }) => {
+        const slotFoods = foods.filter((food) => food.allowed_meal_slots.includes(meal_slot));
         const response = await client.responses.create({
           model: process.env.OPENAI_MEAL_MODEL || "gpt-5-mini",
           input: [
@@ -111,8 +113,8 @@ export async function POST(request: Request) {
               content: JSON.stringify({
                 instruction: goal_instruction,
                 profile,
-                foods,
-                required_output: `Create exactly ${count} varied, realistic ${label}. Every meal must use meal_slot ${meal_slot}. Use only available foods. Quantities should help the whole day fit the macro targets.`,
+                foods: slotFoods,
+                required_output: `Create exactly ${count} varied, realistic ${label}. Every meal must use meal_slot ${meal_slot}. Use only available foods allowed for that meal slot. Use at most one carb food per meal. For lunch and dinner, total protein-food quantity must be between 100 and 150 grams. Quantities should help the whole day fit the macro targets.`,
               }),
             },
           ],
@@ -146,16 +148,34 @@ export async function POST(request: Request) {
       acc[meal.meal_slot] = (acc[meal.meal_slot] || 0) + 1;
       return acc;
     }, {});
+    const foodById = new Map(foods.map((food) => [food.id, food]));
     const usesOnlyAllowedFoods = meals.every((meal) =>
-      meal.items.every((item) => allowedFoodIds.has(item.food_id))
+      meal.items.every(
+        (item) =>
+          allowedFoodIds.has(item.food_id) &&
+          foodById.get(item.food_id)?.allowed_meal_slots.includes(meal.meal_slot)
+      )
     );
+    const followsMealRules = meals.every((meal) => {
+      const carbCount = meal.items.filter(
+        (item) => foodById.get(item.food_id)?.category === "carb"
+      ).length;
+      const proteinAmount = meal.items.reduce((sum, item) => {
+        return foodById.get(item.food_id)?.category === "protein" ? sum + item.amount : sum;
+      }, 0);
+      const invalidProteinAmount =
+        (meal.meal_slot === "lunch" || meal.meal_slot === "dinner") &&
+        (proteinAmount < 100 || proteinAmount > 150);
+      return carbCount <= 1 && !invalidProteinAmount;
+    });
 
     if (
       !usesOnlyAllowedFoods ||
       counts.breakfast !== 5 ||
       counts.lunch !== 5 ||
       counts.dinner !== 5 ||
-      counts.snack_1 !== 3
+      counts.snack_1 !== 3 ||
+      !followsMealRules
     ) {
       return Response.json({ error: "AI returned an invalid meal plan." }, { status: 502 });
     }

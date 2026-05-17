@@ -50,6 +50,22 @@ export function buildTemplateOptions(
       const slot = inferMealSlot(template);
       if (!slot || items.length === 0) return result;
       if (items.some((item) => !availableFoodIds.has(item.food_id))) return result;
+      if (
+        items.some((item) => {
+          const food = foodById.get(item.food_id);
+          return food && food.allowed_meal_slots?.length > 0 && !food.allowed_meal_slots.includes(slot);
+        })
+      ) return result;
+      if (items.filter((item) => foodById.get(item.food_id)?.category === "carb").length > 1) {
+        return result;
+      }
+      if (slot === "lunch" || slot === "dinner") {
+        const proteinAmount = items.reduce((sum, item) => {
+          const food = foodById.get(item.food_id);
+          return food?.category === "protein" ? sum + Number(item.amount) : sum;
+        }, 0);
+        if (proteinAmount < 100 || proteinAmount > 150) return result;
+      }
 
       const macros = items.reduce<MacroTotals>(
         (totals, item) => {
