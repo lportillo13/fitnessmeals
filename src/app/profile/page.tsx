@@ -57,7 +57,7 @@ export default function ProfilePage() {
     );
 
     if (rememberedProfile) {
-      loadProfile(rememberedProfile, false);
+      loadProfile(rememberedProfile, false, false);
     }
   }, []);
 
@@ -72,7 +72,7 @@ export default function ProfilePage() {
     function syncSelectedProfile() {
       const rememberedProfileId = window.localStorage.getItem("selected-profile-id");
       const rememberedProfile = profiles.find((profile) => profile.id === rememberedProfileId);
-      if (rememberedProfile) loadProfile(rememberedProfile, false);
+      if (rememberedProfile) loadProfile(rememberedProfile, false, false);
     }
 
     window.addEventListener("selected-profile-changed", syncSelectedProfile);
@@ -89,7 +89,7 @@ export default function ProfilePage() {
     }));
   }
 
-  function loadProfile(profile: Profile, announce = true) {
+  function loadProfile(profile: Profile, announce = true, broadcast = true) {
     setForm({
       id: profile.id,
       name: profile.name,
@@ -104,7 +104,9 @@ export default function ProfilePage() {
       goalInstruction: profile.goal_instruction || "",
     });
     window.localStorage.setItem("selected-profile-id", profile.id);
-    window.dispatchEvent(new Event("selected-profile-changed"));
+    if (broadcast) {
+      window.dispatchEvent(new Event("selected-profile-changed"));
+    }
     if (announce) {
       setMessage(`${profile.name}'s profile loaded.`);
     }
@@ -214,9 +216,14 @@ export default function ProfilePage() {
           items: { food_id: string; amount: number }[];
         }[];
         error?: string;
+        details?: unknown;
       };
       if (!response.ok || !payload.meals) {
-        setMessage(payload.error || "AI could not create the nutrition plan.");
+        setMessage(
+          payload.error
+            ? `${payload.error}${payload.details ? ` ${JSON.stringify(payload.details)}` : ""}`
+            : "AI could not create the nutrition plan."
+        );
         setGenerationState("idle");
         return;
       }

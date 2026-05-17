@@ -177,7 +177,17 @@ export async function POST(request: Request) {
       counts.snack_1 !== 3 ||
       !followsMealRules
     ) {
-      return Response.json({ error: "AI returned an invalid meal plan." }, { status: 502 });
+      return Response.json(
+        {
+          error: "AI returned an invalid meal plan.",
+          details: {
+            counts,
+            usesOnlyAllowedFoods,
+            followsMealRules,
+          },
+        },
+        { status: 502 }
+      );
     }
 
     return Response.json({
