@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Plus, RefreshCw, Shuffle, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronUp, Plus, RefreshCw, Shuffle, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   buildTemplateOptions,
@@ -52,6 +52,7 @@ export default function CalculatorPage() {
   const [manualAmount, setManualAmount] = useState(1);
   const [openMealSlot, setOpenMealSlot] = useState<MealSlot>("breakfast");
   const [freeDay, setFreeDay] = useState(false);
+  const [showManualAdd, setShowManualAdd] = useState(false);
 
   useEffect(() => {
     async function loadCoreData() {
@@ -538,6 +539,18 @@ export default function CalculatorPage() {
     <main className="app-shell">
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[1fr_380px]">
         <section>
+          <div className="mb-4 lg:hidden">
+            <MacroSummary
+              totals={totals}
+              targets={{
+                calories: selectedProfile?.calorie_target || 0,
+                protein: selectedProfile?.protein_target || 0,
+                carbs: selectedProfile?.carbs_target || 0,
+                fat: selectedProfile?.fat_target || 0,
+              }}
+            />
+          </div>
+
           <p className="eyebrow mb-2 text-xs font-semibold">Daily planner</p>
           <h1 className="mb-4 text-4xl font-bold">Today&apos;s Meal Plan</h1>
 
@@ -573,8 +586,16 @@ export default function CalculatorPage() {
           </div>
 
           <div className="surface mb-4 rounded-3xl p-5">
-            <h2 className="mb-4 text-xl font-semibold">Add food manually</h2>
-            <div className="grid gap-3 md:grid-cols-[160px_1fr_120px_auto]">
+            <button
+              type="button"
+              onClick={() => setShowManualAdd((current) => !current)}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <h2 className="text-xl font-semibold">Add food manually</h2>
+              {showManualAdd ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+            </button>
+            {showManualAdd && (
+            <div className="mt-4 grid gap-3 md:grid-cols-[160px_1fr_120px_auto]">
               <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={manualMealSlot} onChange={(event) => setManualMealSlot(event.target.value as MealSlot)}>
                 {plannerSlots.map((slot) => <option key={slot.key} value={slot.key}>{slot.label}</option>)}
               </select>
@@ -593,6 +614,7 @@ export default function CalculatorPage() {
               <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" value={manualAmount} onChange={(event) => setManualAmount(Number(event.target.value))} />
               <button onClick={addManualFood} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold"><Plus className="h-4 w-4" />Add</button>
             </div>
+            )}
           </div>
 
           <div className="space-y-4">
@@ -679,7 +701,7 @@ export default function CalculatorPage() {
           </div>
         </section>
 
-        <aside className="space-y-4">
+        <aside className="hidden space-y-4 lg:block">
           <MacroSummary
             totals={totals}
             targets={{
