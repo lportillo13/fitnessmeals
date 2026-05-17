@@ -379,11 +379,15 @@ function slotTarget(profile: Profile, share: number): MacroTotals {
 }
 
 function scoreOption(macros: MacroTotals, target: MacroTotals) {
+  function delta(current: number, desired: number) {
+    const distance = Math.abs(current - desired) / Math.max(desired, 1);
+    return current > desired ? distance * 3 : distance;
+  }
   return (
-    Math.abs(macros.calories - target.calories) / Math.max(target.calories, 1) +
-    Math.abs(macros.protein - target.protein) / Math.max(target.protein, 1) +
-    Math.abs(macros.carbs - target.carbs) / Math.max(target.carbs, 1) +
-    Math.abs(macros.fat - target.fat) / Math.max(target.fat, 1)
+    delta(macros.calories, target.calories) +
+    delta(macros.protein, target.protein) +
+    delta(macros.carbs, target.carbs) +
+    delta(macros.fat, target.fat)
   );
 }
 

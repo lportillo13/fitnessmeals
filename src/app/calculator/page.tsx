@@ -51,6 +51,7 @@ export default function CalculatorPage() {
   const [manualMealSlot, setManualMealSlot] = useState<MealSlot>("breakfast");
   const [manualAmount, setManualAmount] = useState(1);
   const [openMealSlot, setOpenMealSlot] = useState<MealSlot>("breakfast");
+  const [freeDay, setFreeDay] = useState(false);
 
   useEffect(() => {
     async function loadCoreData() {
@@ -102,6 +103,16 @@ export default function CalculatorPage() {
     }
 
     loadPlannerData();
+  }, [selectedProfileId]);
+
+  useEffect(() => {
+    if (!selectedProfileId) return;
+    const timeoutId = window.setTimeout(() => {
+      setFreeDay(
+        window.localStorage.getItem(`free-day:${selectedProfileId}:${getTodayKey()}`) === "true"
+      );
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [selectedProfileId]);
 
   useEffect(() => {
@@ -328,18 +339,20 @@ export default function CalculatorPage() {
     if (!changedMeal || !selectedProfile) return;
 
     const changedIndex = plannerSlots.findIndex((slot) => slot.key === changedMeal.meal_slot);
-    await rebalanceFutureMeals(nextMeals, changedIndex);
+    if (!freeDay) await rebalanceFutureMeals(nextMeals, changedIndex);
   }
 
   async function rebalanceFutureMeals(sourceMeals: PlannedMeal[], changedIndex: number) {
     if (!selectedProfile) return;
+    if (freeDay) {
+      setMessage("Free day is on, so automatic recalculation is paused.");
+      return;
+    }
     const futureMeals = sourceMeals.filter(
       (meal) =>
         plannerSlots.findIndex((slot) => slot.key === meal.meal_slot) > changedIndex &&
         !meal.completed
     );
-    if (futureMeals.length === 0) return;
-
     const lockedMeals = sourceMeals.filter(
       (meal) =>
         plannerSlots.findIndex((slot) => slot.key === meal.meal_slot) <= changedIndex ||
@@ -354,6 +367,16 @@ export default function CalculatorPage() {
         .filter((item): item is SelectedFood => item !== null)
     );
     const consumed = calculateDailyTotals(lockedFoods);
+    if (exceedsTargets(consumed, selectedProfile)) {
+      setMessage(
+        "The meals already locked in are over the daily target, so there is no remaining macro budget to rebalance."
+      );
+      return;
+    }
+    if (futureMeals.length === 0) {
+      setMessage("No unfinished future meals are left to rebalance.");
+      return;
+    }
     const replacementPlan = planRemainingMealsByBudget(
       selectedProfile,
       futureMeals.map((meal) => ({
@@ -407,20 +430,27 @@ export default function CalculatorPage() {
       })
       .select("*")
       .single();
-    setMeals((current) =>
-      current.map((entry) =>
+    const nextMeals = meals.map((entry) =>
         entry.id === meal.id ? { ...entry, items: [...entry.items, data as DailyPlanItem] } : entry
-      )
     );
+    setMeals(nextMeals);
     setFoodSearch("");
     setManualFoodId("");
+    if (!freeDay) {
+      const changedIndex = plannerSlots.findIndex((slot) => slot.key === meal.meal_slot);
+      await rebalanceFutureMeals(nextMeals, changedIndex);
+    }
   }
 
   async function removeItem(itemId: string) {
     await createClient().from("daily_plan_items").delete().eq("id", itemId);
-    setMeals((current) =>
-      current.map((meal) => ({ ...meal, items: meal.items.filter((item) => item.id !== itemId) }))
-    );
+    const nextMeals = meals.map((meal) => ({ ...meal, items: meal.items.filter((item) => item.id !== itemId) }));
+    setMeals(nextMeals);
+    const changedMeal = meals.find((meal) => meal.items.some((item) => item.id === itemId));
+    if (changedMeal && !freeDay) {
+      const changedIndex = plannerSlots.findIndex((slot) => slot.key === changedMeal.meal_slot);
+      await rebalanceFutureMeals(nextMeals, changedIndex);
+    }
   }
 
   async function swapItemFood(item: DailyPlanItem, replacementFoodId: string) {
@@ -464,7 +494,7 @@ export default function CalculatorPage() {
     }));
     setMeals(nextMeals);
     const changedIndex = plannerSlots.findIndex((slot) => slot.key === meal.meal_slot);
-    await rebalanceFutureMeals(nextMeals, changedIndex);
+    if (!freeDay) await rebalanceFutureMeals(nextMeals, changedIndex);
     setMessage(`${currentFood.name} swapped for ${replacementFood.name}.`);
   }
 
@@ -516,6 +546,28 @@ export default function CalculatorPage() {
               <button onClick={generatePlan} className="inline-flex items-center gap-2 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black">
                 <RefreshCw className="h-4 w-4" /> {plan ? "Redesign meal plan" : "Create meal plan"}
               </button>
+              <button
+                onClick={() => rebalanceFutureMeals(meals, -1)}
+                disabled={freeDay || meals.length === 0}
+                className="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-5 py-3 font-semibold disabled:opacity-50"
+              >
+                <RefreshCw className="h-4 w-4" /> Rebalance remaining
+              </button>
+              <label className="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-4 py-3 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  checked={freeDay}
+                  onChange={(event) => {
+                    const nextValue = event.target.checked;
+                    setFreeDay(nextValue);
+                    window.localStorage.setItem(
+                      `free-day:${selectedProfileId}:${getTodayKey()}`,
+                      String(nextValue)
+                    );
+                  }}
+                />
+                Free day
+              </label>
             </div>
             {message && <p className="muted mt-3 text-sm">{message}</p>}
           </div>
@@ -640,5 +692,14 @@ export default function CalculatorPage() {
         </aside>
       </div>
     </main>
+  );
+}
+
+function exceedsTargets(totals: ReturnType<typeof calculateDailyTotals>, profile: Profile) {
+  return (
+    totals.calories > profile.calorie_target ||
+    totals.protein > profile.protein_target ||
+    totals.carbs > profile.carbs_target ||
+    totals.fat > profile.fat_target
   );
 }

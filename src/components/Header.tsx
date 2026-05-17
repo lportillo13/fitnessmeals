@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Apple, Dumbbell, Flame, House, Menu, Soup, UserRound, X } from "lucide-react";
+import { Apple, Dumbbell, Flame, House, Menu, Play, Soup, Square, UserRound, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types";
 
@@ -21,6 +21,7 @@ export default function Header() {
   const [isOpen, setIsOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("");
+  const [isFasting, setIsFasting] = useState(false);
 
   useEffect(() => {
     async function loadProfiles() {
@@ -38,10 +39,44 @@ export default function Header() {
     loadProfiles();
   }, []);
 
+  useEffect(() => {
+    function syncFast() {
+      const saved = window.localStorage.getItem("fasting-session");
+      if (!saved) {
+        setIsFasting(false);
+        return;
+      }
+      const session = JSON.parse(saved) as { endedAt: string | null };
+      setIsFasting(!session.endedAt);
+    }
+
+    syncFast();
+    window.addEventListener("fasting-session-changed", syncFast);
+    return () => window.removeEventListener("fasting-session-changed", syncFast);
+  }, []);
+
   function changeProfile(profileId: string) {
     setSelectedProfileId(profileId);
     window.localStorage.setItem("selected-profile-id", profileId);
     window.dispatchEvent(new Event("selected-profile-changed"));
+  }
+
+  function toggleFast() {
+    if (isFasting) {
+      const saved = window.localStorage.getItem("fasting-session");
+      if (!saved) return;
+      const session = JSON.parse(saved) as { startedAt: string; targetHours: number; endedAt: string | null };
+      window.localStorage.setItem(
+        "fasting-session",
+        JSON.stringify({ ...session, endedAt: new Date().toISOString() })
+      );
+    } else {
+      window.localStorage.setItem(
+        "fasting-session",
+        JSON.stringify({ startedAt: new Date().toISOString(), targetHours: 14, endedAt: null })
+      );
+    }
+    window.dispatchEvent(new Event("fasting-session-changed"));
   }
 
   return (
@@ -104,6 +139,16 @@ export default function Header() {
               ))}
             </select>
           )}
+          <button
+            type="button"
+            onClick={toggleFast}
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${
+              isFasting ? "bg-rose-300 text-black" : "bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
+            }`}
+          >
+            {isFasting ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {isFasting ? "End fast" : "Start fast"}
+          </button>
         </nav>
       </div>
     </header>

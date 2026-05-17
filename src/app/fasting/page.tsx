@@ -54,6 +54,18 @@ export default function FastingPage() {
     return () => window.clearInterval(intervalId);
   }, []);
 
+  useEffect(() => {
+    function syncSession() {
+      const saved = window.localStorage.getItem(STORAGE_KEY);
+      const nextSession = saved ? (JSON.parse(saved) as FastingSession) : null;
+      setSession(nextSession);
+      if (nextSession) setTargetHours(nextSession.targetHours);
+    }
+
+    window.addEventListener("fasting-session-changed", syncSession);
+    return () => window.removeEventListener("fasting-session-changed", syncSession);
+  }, []);
+
   const targetEnd = useMemo(() => {
     if (!session) return null;
     return new Date(new Date(session.startedAt).getTime() + session.targetHours * 60 * 60 * 1000);
@@ -105,6 +117,7 @@ export default function FastingPage() {
     };
     setSession(nextSession);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
+    window.dispatchEvent(new Event("fasting-session-changed"));
     setMessage("Fast started.");
     await notify("Fast started", `You started a ${targetHours}-hour fast.`);
   }
@@ -114,6 +127,7 @@ export default function FastingPage() {
     const nextSession = { ...session, endedAt: new Date().toISOString() };
     setSession(nextSession);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
+    window.dispatchEvent(new Event("fasting-session-changed"));
     setMessage("Fast ended.");
     await notify("Fast ended", "You ended your fast.");
   }
@@ -121,6 +135,7 @@ export default function FastingPage() {
   function resetFast() {
     setSession(null);
     window.localStorage.removeItem(STORAGE_KEY);
+    window.dispatchEvent(new Event("fasting-session-changed"));
     setMessage("Timer reset.");
   }
 
