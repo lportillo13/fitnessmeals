@@ -288,11 +288,12 @@ export default function MealsPage() {
     const foodByName = new Map((refreshedFoods || []).map((food) => [food.name, food]));
 
     for (const template of jazminMealTemplates) {
+      const descriptiveName = getDescriptiveTemplateName(template.name, template.items);
       const { data: existingTemplate } = await supabase
         .from("meal_templates")
         .select("id")
         .eq("profile_id", selectedProfileId)
-        .eq("name", template.name)
+        .eq("name", descriptiveName)
         .maybeSingle();
       if (existingTemplate) continue;
 
@@ -308,7 +309,7 @@ export default function MealsPage() {
 
       const { data: createdTemplate, error: templateError } = await supabase
         .from("meal_templates")
-        .insert({ profile_id: selectedProfileId, name: template.name, meal_slot: mealSlot })
+        .insert({ profile_id: selectedProfileId, name: descriptiveName, meal_slot: mealSlot })
         .select()
         .single();
 
@@ -480,4 +481,30 @@ export default function MealsPage() {
       </div>
     </main>
   );
+}
+
+function getDescriptiveTemplateName(
+  originalName: string,
+  items: readonly (readonly [string, number])[]
+) {
+  if (originalName.includes("Breakfast")) {
+    return items.some(([food]) => food.includes("Hard-boiled egg"))
+      ? "Egg breakfast with cottage cheese"
+      : "Egg whites breakfast with cottage cheese";
+  }
+
+  if (originalName.includes("Snack")) {
+    return items.map(([food]) => food.replace("Protein shake + creatine", "Protein shake")).join(" + ");
+  }
+
+  const mainFoods = items
+    .map(([food]) => food)
+    .filter(
+      (food) =>
+        !["Vegetables", "Olive oil", "Avocado", "Feta"].includes(food)
+    )
+    .slice(0, 2)
+    .map((food) => food.replace(" cooked", ""));
+
+  return mainFoods.join(" + ");
 }
