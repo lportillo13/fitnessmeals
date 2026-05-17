@@ -51,6 +51,7 @@ export default function CalculatorPage() {
   const [manualFoodId, setManualFoodId] = useState("");
   const [manualMealSlot, setManualMealSlot] = useState<MealSlot>("breakfast");
   const [manualAmount, setManualAmount] = useState(1);
+  const [openMealSlot, setOpenMealSlot] = useState<MealSlot>("breakfast");
 
   useEffect(() => {
     async function loadCoreData() {
@@ -135,6 +136,11 @@ export default function CalculatorPage() {
           ),
         }))
       );
+      const firstIncomplete =
+        plannerSlots.find((slot) =>
+          loadedMeals.some((meal) => meal.meal_slot === slot.key && !meal.completed)
+        )?.key || "breakfast";
+      setOpenMealSlot(firstIncomplete);
       setCheckedTodayPlan(true);
     }
 
@@ -231,6 +237,7 @@ export default function CalculatorPage() {
         ),
       }))
     );
+    setOpenMealSlot("breakfast");
     setMessage("Today's meal plan is ready.");
   }
 
@@ -340,9 +347,18 @@ export default function CalculatorPage() {
 
   async function toggleCompleted(mealId: string, completed: boolean) {
     await createClient().from("daily_plan_meals").update({ completed }).eq("id", mealId);
-    setMeals((current) =>
-      current.map((meal) => (meal.id === mealId ? { ...meal, completed } : meal))
-    );
+    setMeals((current) => {
+      const nextMeals = current.map((meal) =>
+        meal.id === mealId ? { ...meal, completed } : meal
+      );
+      if (completed) {
+        const nextIncomplete = plannerSlots.find((slot) =>
+          nextMeals.some((meal) => meal.meal_slot === slot.key && !meal.completed)
+        );
+        if (nextIncomplete) setOpenMealSlot(nextIncomplete.key);
+      }
+      return nextMeals;
+    });
   }
 
   async function addManualFood() {
@@ -455,10 +471,14 @@ export default function CalculatorPage() {
               return (
                 <div key={slot.key} className="surface rounded-3xl p-5">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                    <div>
+                    <button
+                      type="button"
+                      onClick={() => setOpenMealSlot(slot.key)}
+                      className="text-left"
+                    >
                       <h2 className="text-xl font-semibold">{slot.label}</h2>
                       <p className="muted text-sm">{meal?.meal_name || "No meal selected yet."}</p>
-                    </div>
+                    </button>
                     {meal && (
                       <div className="flex flex-wrap gap-2">
                         <button onClick={() => shuffleMeal(slot.key)} className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm"><Shuffle className="h-4 w-4" />Random swap</button>
@@ -473,7 +493,7 @@ export default function CalculatorPage() {
                     )}
                   </div>
 
-                  {meal?.items.length ? (
+                  {openMealSlot === slot.key && meal?.items.length ? (
                     <div className="space-y-2">
                       {meal.items.map((item) => {
                         const food = foods.find((candidate) => candidate.id === item.food_id);
@@ -496,9 +516,9 @@ export default function CalculatorPage() {
                         );
                       })}
                     </div>
-                  ) : (
+                  ) : openMealSlot === slot.key ? (
                     <p className="muted text-sm">Generate a plan to fill this meal.</p>
-                  )}
+                  ) : null}
                 </div>
               );
             })}

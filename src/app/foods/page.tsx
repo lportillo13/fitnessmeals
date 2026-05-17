@@ -64,6 +64,12 @@ export default function FoodsPage() {
   const [addingFood, setAddingFood] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scannerMessage, setScannerMessage] = useState("");
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    protein: true,
+    carb: true,
+    fat: true,
+    other: true,
+  });
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const scannerElementId = "food-barcode-reader";
 
@@ -328,6 +334,14 @@ export default function FoodsPage() {
       .toLowerCase()
       .includes(search.toLowerCase())
   );
+  const groupedFoods = {
+    protein: filteredFoods.filter((food) => food.category === "protein"),
+    carb: filteredFoods.filter((food) => food.category === "carb"),
+    fat: filteredFoods.filter((food) => food.category === "fat"),
+    other: filteredFoods.filter(
+      (food) => !["protein", "carb", "fat"].includes(food.category)
+    ),
+  };
 
   return (
     <main className="app-shell">
@@ -414,24 +428,42 @@ export default function FoodsPage() {
 
         {message && <p className="text-sm text-lime-100">{message}</p>}
 
-        <div className="surface overflow-x-auto rounded-3xl">
-          <table className="w-full text-sm">
-            <thead className="bg-white/5 text-left">
-              <tr>
-                <th className="p-3">Food</th>
-                <th className="p-3">Serving</th>
-                <th className="p-3">Calories</th>
-                <th className="p-3">Protein</th>
-                <th className="p-3">Carbs</th>
-                <th className="p-3">Fat</th>
-                <th className="p-3">Fiber</th>
-                <th className="p-3">Have it?</th>
-                <th className="p-3">Mode</th>
-                <th className="p-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredFoods.map((food) => {
+        <div className="space-y-4">
+          {Object.entries(groupedFoods).map(([category, categoryFoods]) => (
+            <section key={category} className="surface overflow-hidden rounded-3xl">
+              <button
+                type="button"
+                onClick={() =>
+                  setOpenSections((current) => ({
+                    ...current,
+                    [category]: !current[category],
+                  }))
+                }
+                className="flex w-full items-center justify-between bg-white/5 px-4 py-4 text-left"
+              >
+                <span className="text-lg font-semibold capitalize">{category}s</span>
+                <span className="muted text-sm">{openSections[category] ? "Close" : "Open"}</span>
+              </button>
+
+              {openSections[category] && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-white/5 text-left">
+                      <tr>
+                        <th className="p-3">Food</th>
+                        <th className="p-3">Serving</th>
+                        <th className="p-3">Calories</th>
+                        <th className="p-3">Protein</th>
+                        <th className="p-3">Carbs</th>
+                        <th className="p-3">Fat</th>
+                        <th className="p-3">Fiber</th>
+                        <th className="p-3">Have it?</th>
+                        <th className="p-3">Mode</th>
+                        <th className="p-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {categoryFoods.map((food) => {
                 const isEditing = editingFoodId === food.id;
 
                 return (
@@ -545,9 +577,13 @@ export default function FoodsPage() {
                     </td>
                   </tr>
                 );
-              })}
-            </tbody>
-          </table>
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          ))}
         </div>
       </div>
     </main>
