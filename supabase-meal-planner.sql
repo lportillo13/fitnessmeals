@@ -12,10 +12,24 @@ create table if not exists public.meal_rules (
   profile_id uuid references public.meal_profiles(id) on delete cascade,
   name text not null,
   meal_slot text not null check (meal_slot in ('breakfast', 'snack_1', 'lunch', 'snack_2', 'dinner')),
-  required_food_id uuid not null references public.foods(id) on delete cascade,
+  rule_type text not null default 'required_food'
+    check (rule_type in ('required_food', 'minimum_category_amount', 'exact_food_amount')),
+  required_food_id uuid references public.foods(id) on delete cascade,
+  target_category text check (target_category in ('protein', 'carb', 'fat', 'fruit', 'snack', 'drink', 'other')),
+  amount numeric,
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+alter table public.meal_rules
+  add column if not exists rule_type text not null default 'required_food'
+    check (rule_type in ('required_food', 'minimum_category_amount', 'exact_food_amount')),
+  add column if not exists target_category text
+    check (target_category in ('protein', 'carb', 'fat', 'fruit', 'snack', 'drink', 'other')),
+  add column if not exists amount numeric;
+
+alter table public.meal_rules
+  alter column required_food_id drop not null;
 
 create table if not exists public.daily_plans (
   id uuid primary key default gen_random_uuid(),

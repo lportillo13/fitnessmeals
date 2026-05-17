@@ -28,6 +28,9 @@ export default function MealsPage() {
   const [ruleName, setRuleName] = useState("");
   const [ruleSlot, setRuleSlot] = useState<MealSlot>("snack_1");
   const [ruleFoodId, setRuleFoodId] = useState("");
+  const [ruleType, setRuleType] = useState<MealRule["rule_type"]>("required_food");
+  const [ruleCategory, setRuleCategory] = useState<Food["category"]>("protein");
+  const [ruleAmount, setRuleAmount] = useState(125);
   const [mealStyle, setMealStyle] = useState("");
   const [isGeneratingAiMeal, setIsGeneratingAiMeal] = useState(false);
   const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual");
@@ -196,8 +199,12 @@ export default function MealsPage() {
   }
 
   async function saveRule() {
-    if (!selectedProfileId || !ruleName || !ruleFoodId) {
-      setMessage("Choose a profile, name the rule, and pick a food.");
+    if (
+      !selectedProfileId ||
+      !ruleName ||
+      (ruleType !== "minimum_category_amount" && !ruleFoodId)
+    ) {
+      setMessage("Choose a profile and complete the rule details.");
       return;
     }
 
@@ -207,7 +214,10 @@ export default function MealsPage() {
         profile_id: selectedProfileId,
         name: ruleName,
         meal_slot: ruleSlot,
-        required_food_id: ruleFoodId,
+        rule_type: ruleType,
+        required_food_id: ruleType === "minimum_category_amount" ? null : ruleFoodId,
+        target_category: ruleType === "minimum_category_amount" ? ruleCategory : null,
+        amount: ruleType === "required_food" ? null : ruleAmount,
       })
       .select("*")
       .single();
@@ -333,6 +343,55 @@ export default function MealsPage() {
       .eq("profile_id", selectedProfileId)
       .order("name");
     setTemplates((data || []) as MealTemplate[]);
+    const shake = foodByName.get("Protein shake + creatine");
+    if (shake) {
+      const defaultRules: Omit<MealRule, "id" | "is_active">[] = [
+        {
+          profile_id: selectedProfileId,
+          name: "Lunch protein at least 125 g",
+          meal_slot: "lunch",
+          rule_type: "minimum_category_amount",
+          required_food_id: null,
+          target_category: "protein",
+          amount: 125,
+        },
+        {
+          profile_id: selectedProfileId,
+          name: "Dinner protein at least 125 g",
+          meal_slot: "dinner",
+          rule_type: "minimum_category_amount",
+          required_food_id: null,
+          target_category: "protein",
+          amount: 125,
+        },
+        {
+          profile_id: selectedProfileId,
+          name: "Protein shake exactly one scoop",
+          meal_slot: "snack_1",
+          rule_type: "exact_food_amount",
+          required_food_id: shake.id,
+          target_category: null,
+          amount: 1,
+        },
+      ];
+      for (const rule of defaultRules) {
+        const { data: existingRule } = await supabase
+          .from("meal_rules")
+          .select("id")
+          .eq("profile_id", selectedProfileId)
+          .eq("name", rule.name)
+          .maybeSingle();
+        if (!existingRule) {
+          await supabase.from("meal_rules").insert(rule);
+        }
+      }
+      const { data: refreshedRules } = await supabase
+        .from("meal_rules")
+        .select("*")
+        .eq("profile_id", selectedProfileId)
+        .order("created_at");
+      setRules((refreshedRules || []) as MealRule[]);
+    }
     setMessage("Jazmin's monthly plan was imported as saved meals.");
     setIsImporting(false);
   }
@@ -453,15 +512,31 @@ export default function MealsPage() {
         <section className="surface rounded-3xl p-5">
           <p className="eyebrow mb-2 text-xs font-semibold">Planner logic</p>
           <h2 className="mb-4 text-2xl font-bold">Rules</h2>
-          <div className="grid gap-3 md:grid-cols-[1fr_160px_1fr_auto]">
+          <div className="grid gap-3 md:grid-cols-[1fr_160px_180px_1fr_120px_auto]">
             <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" placeholder="Protein shake every day" value={ruleName} onChange={(event) => setRuleName(event.target.value)} />
             <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={ruleSlot} onChange={(event) => setRuleSlot(event.target.value as MealSlot)}>
               <option value="breakfast">Breakfast</option><option value="snack_1">Snack 1</option><option value="lunch">Lunch</option><option value="snack_2">Snack 2</option><option value="dinner">Dinner</option>
             </select>
-            <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={ruleFoodId} onChange={(event) => setRuleFoodId(event.target.value)}>
-              <option value="">Food required by rule</option>
-              {foods.map((food) => <option key={food.id} value={food.id}>{food.name}</option>)}
+            <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={ruleType} onChange={(event) => setRuleType(event.target.value as MealRule["rule_type"])}>
+              <option value="required_food">Require food</option>
+              <option value="minimum_category_amount">Minimum category amount</option>
+              <option value="exact_food_amount">Exact food amount</option>
             </select>
+            {ruleType === "minimum_category_amount" ? (
+              <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={ruleCategory} onChange={(event) => setRuleCategory(event.target.value as Food["category"])}>
+                <option value="protein">Protein</option>
+                <option value="carb">Carb</option>
+                <option value="fat">Fat</option>
+              </select>
+            ) : (
+              <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={ruleFoodId} onChange={(event) => setRuleFoodId(event.target.value)}>
+                <option value="">Food required by rule</option>
+                {foods.map((food) => <option key={food.id} value={food.id}>{food.name}</option>)}
+              </select>
+            )}
+            {ruleType !== "required_food" ? (
+              <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" value={ruleAmount} onChange={(event) => setRuleAmount(Number(event.target.value))} />
+            ) : <div />}
             <button onClick={saveRule} className="rounded-2xl bg-lime-300 px-4 py-3 font-semibold text-black">Add rule</button>
           </div>
         </section>
@@ -472,7 +547,14 @@ export default function MealsPage() {
             {rules.map((rule) => (
               <div key={rule.id} className="surface-strong rounded-2xl p-3">
                 <div className="font-medium">{rule.name}</div>
-                <div className="muted text-sm">{rule.meal_slot} · {foods.find((food) => food.id === rule.required_food_id)?.name}</div>
+                <div className="muted text-sm">
+                  {rule.meal_slot} ·{" "}
+                  {rule.rule_type === "minimum_category_amount"
+                    ? `${rule.target_category} ≥ ${rule.amount} g`
+                    : rule.rule_type === "exact_food_amount"
+                      ? `${foods.find((food) => food.id === rule.required_food_id)?.name} = ${rule.amount}`
+                      : foods.find((food) => food.id === rule.required_food_id)?.name}
+                </div>
                 <button onClick={() => deleteRule(rule.id)} className="mt-2 rounded-xl bg-white/6 px-3 py-2 text-sm">Delete</button>
               </div>
             ))}

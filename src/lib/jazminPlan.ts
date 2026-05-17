@@ -4,7 +4,7 @@ export const jazminPlanFoods = [
   { name: "Bone chicken broth", category: "protein", serving_mode: "grams", serving_label: "240 g", base_grams: 240, calories: 45, protein_g: 9, carbs_g: 0, fat_g: 0.5, fiber_g: 0 },
   { name: "Cottage cheese 1.5%", category: "protein", serving_mode: "grams", serving_label: "110 g", base_grams: 110, calories: 90, protein_g: 13, carbs_g: 5, fat_g: 2, fiber_g: 0 },
   { name: "Hard-boiled egg", category: "protein", serving_mode: "unit", serving_label: "1 egg", base_grams: null, calories: 70, protein_g: 6, carbs_g: 0, fat_g: 5, fiber_g: 0 },
-  { name: "Protein shake + creatine", category: "protein", serving_mode: "grams", serving_label: "1 shake / 325 g", base_grams: 325, calories: 135, protein_g: 25, carbs_g: 3, fat_g: 2, fiber_g: 0 },
+  { name: "Protein shake + creatine", category: "protein", serving_mode: "unit", serving_label: "1 scoop", base_grams: null, calories: 135, protein_g: 25, carbs_g: 3, fat_g: 2, fiber_g: 0 },
   { name: "Chicken breast cooked", category: "protein", serving_mode: "grams", serving_label: "113 g cooked", base_grams: 113, calories: 187, protein_g: 35, carbs_g: 0, fat_g: 4, fiber_g: 0 },
   { name: "Cooked rice", category: "carb", serving_mode: "grams", serving_label: "100 g", base_grams: 100, calories: 130, protein_g: 3, carbs_g: 28, fat_g: 0.3, fiber_g: 0.4 },
   { name: "Avocado", category: "fat", serving_mode: "grams", serving_label: "50 g", base_grams: 50, calories: 80, protein_g: 1, carbs_g: 4, fat_g: 7, fiber_g: 3 },

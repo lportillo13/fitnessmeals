@@ -88,9 +88,12 @@ export function getSlotOptions(
   if (activeRules.length === 0) return slotOptions;
 
   return slotOptions.filter((option) =>
-    activeRules.every((rule) =>
-      option.items.some((item) => item.food_id === rule.required_food_id)
-    )
+    activeRules.every((rule) => {
+      if (rule.rule_type === "required_food") {
+        return option.items.some((item) => item.food_id === rule.required_food_id);
+      }
+      return true;
+    })
   );
 }
 
@@ -179,7 +182,7 @@ export function chooseOptimizedDayPlan(
     carbs: profile.carbs_target,
     fat: profile.fat_target,
     fiber: 0,
-  });
+  }, rules);
 
   return plannerSlots.map((slot, index) => ({
     slot: slot.key,
@@ -249,7 +252,8 @@ export function chooseRemainingPlan(
 export function rebalanceMealItems(
   items: MealTemplateItem[],
   foods: Food[],
-  target: MacroTotals
+  target: MacroTotals,
+  rules: MealRule[] = []
 ) {
   const foodById = new Map(foods.map((food) => [food.id, food]));
   const nextItems = items.map((item) => ({ ...item }));
@@ -266,6 +270,7 @@ export function rebalanceMealItems(
       const step = food.serving_mode === "grams" ? 5 : 0.25;
       for (const direction of [-1, 1]) {
         const candidateAmount = Math.max(step, roundAmount(item.amount + step * direction, step));
+        if (!isAmountAllowed(item, candidateAmount, food, rules)) continue;
         if (candidateAmount === item.amount) continue;
         const candidateItems = nextItems.map((candidate) =>
           candidate.food_id === item.food_id && candidate.amount === item.amount
@@ -318,7 +323,12 @@ export function planRemainingMealsByBudget(
 
     const candidates = getSlotOptions(options, meal.slot, rules).map((option) => ({
       option,
-      tunedItems: rebalanceMealItems(option.items, foods, perMealTarget),
+      tunedItems: rebalanceMealItems(
+        option.items,
+        foods,
+        perMealTarget,
+        rules.filter((rule) => rule.meal_slot === meal.slot && rule.is_active)
+      ),
     }));
     const best =
       candidates.sort(
@@ -391,7 +401,8 @@ function roundAmount(value: number, step: number) {
 function tuneWholeDay(
   selections: TemplateOption[],
   foods: Food[],
-  target: MacroTotals
+  target: MacroTotals,
+  rules: MealRule[]
 ) {
   const foodById = new Map(foods.map((food) => [food.id, food]));
   const meals = selections.map((selection) => selection.items.map((item) => ({ ...item })));
@@ -410,6 +421,20 @@ function tuneWholeDay(
         const step = food.serving_mode === "grams" ? 5 : 0.25;
         for (const direction of [-1, 1]) {
           const candidateAmount = Math.max(step, roundAmount(item.amount + step * direction, step));
+          if (
+            !isAmountAllowed(
+              item,
+              candidateAmount,
+              food,
+              rules.filter(
+                (rule) =>
+                  rule.is_active &&
+                  rule.meal_slot === selections[mealIndex].template.meal_slot
+              )
+            )
+          ) {
+            continue;
+          }
           if (candidateAmount === item.amount) continue;
           const candidateMeals = meals.map((meal, candidateMealIndex) =>
             meal.map((candidate, candidateItemIndex) =>
@@ -448,4 +473,24 @@ function totalForMeals(meals: MealTemplateItem[][], foodById: Map<string, Food>)
     },
     { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
   );
+}
+
+function isAmountAllowed(
+  item: MealTemplateItem,
+  amount: number,
+  food: Food,
+  rules: MealRule[]
+) {
+  return rules.every((rule) => {
+    if (rule.rule_type === "exact_food_amount" && rule.required_food_id === item.food_id) {
+      return amount === Number(rule.amount || 0);
+    }
+    if (
+      rule.rule_type === "minimum_category_amount" &&
+      rule.target_category === food.category
+    ) {
+      return amount >= Number(rule.amount || 0);
+    }
+    return true;
+  });
 }

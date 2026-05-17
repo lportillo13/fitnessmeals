@@ -68,7 +68,10 @@ export type MealRule = {
   profile_id: string | null;
   name: string;
   meal_slot: MealSlot;
-  required_food_id: string;
+  rule_type: "required_food" | "minimum_category_amount" | "exact_food_amount";
+  required_food_id: string | null;
+  target_category: Food["category"] | null;
+  amount: number | null;
   is_active: boolean;
 };
 
