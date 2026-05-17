@@ -62,6 +62,16 @@ export default function MealsPage() {
   }, []);
 
   useEffect(() => {
+    function syncSelectedProfile() {
+      const rememberedProfileId = window.localStorage.getItem("selected-profile-id");
+      if (rememberedProfileId) setSelectedProfileId(rememberedProfileId);
+    }
+
+    window.addEventListener("selected-profile-changed", syncSelectedProfile);
+    return () => window.removeEventListener("selected-profile-changed", syncSelectedProfile);
+  }, []);
+
+  useEffect(() => {
     async function loadTemplatesAndRules() {
       if (!selectedProfileId) return;
       const supabase = createClient();
@@ -652,11 +662,11 @@ export default function MealsPage() {
         </section>
       </div>
 
-      <div className="mx-auto mt-4 grid max-w-6xl gap-4 lg:grid-cols-[1fr_340px]">
+      <div className="mx-auto mt-4 grid max-w-6xl gap-4 lg:grid-cols-[1fr_300px]">
         <section className="surface rounded-3xl p-5">
           <p className="eyebrow mb-2 text-xs font-semibold">Planner logic</p>
           <h2 className="mb-4 text-2xl font-bold">Rules</h2>
-          <div className="grid gap-3 md:grid-cols-[1fr_160px_180px_1fr_120px_auto]">
+          <div className="grid gap-3 md:grid-cols-2">
             <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" placeholder="Protein shake every day" value={ruleName} onChange={(event) => setRuleName(event.target.value)} />
             <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={ruleSlot} onChange={(event) => setRuleSlot(event.target.value as MealSlot)}>
               <option value="breakfast">Breakfast</option><option value="snack_1">Snack 1</option><option value="lunch">Lunch</option><option value="snack_2">Snack 2</option><option value="dinner">Dinner</option>
@@ -680,8 +690,8 @@ export default function MealsPage() {
             )}
             {ruleType !== "required_food" ? (
               <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" value={ruleAmount} onChange={(event) => setRuleAmount(Number(event.target.value))} />
-            ) : <div />}
-            <button onClick={saveRule} className="rounded-2xl bg-lime-300 px-4 py-3 font-semibold text-black">Add rule</button>
+            ) : null}
+            <button onClick={saveRule} className="rounded-2xl bg-lime-300 px-4 py-3 font-semibold text-black md:col-span-2">Add rule</button>
           </div>
         </section>
 

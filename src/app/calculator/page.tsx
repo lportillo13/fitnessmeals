@@ -12,7 +12,7 @@ import {
   plannerSlots,
   type TemplateOption,
 } from "@/lib/mealPlanner";
-import { calculateDailyTotals, roundMacros } from "@/lib/macroCalculator";
+import { calculateDailyTotals, calculateFoodMacros, roundMacros } from "@/lib/macroCalculator";
 import type {
   DailyPlan,
   DailyPlanItem,
@@ -71,6 +71,16 @@ export default function CalculatorPage() {
     }
 
     loadCoreData();
+  }, []);
+
+  useEffect(() => {
+    function syncSelectedProfile() {
+      const rememberedProfileId = window.localStorage.getItem("selected-profile-id");
+      if (rememberedProfileId) setSelectedProfileId(rememberedProfileId);
+    }
+
+    window.addEventListener("selected-profile-changed", syncSelectedProfile);
+    return () => window.removeEventListener("selected-profile-changed", syncSelectedProfile);
   }, []);
 
   useEffect(() => {
@@ -413,6 +423,51 @@ export default function CalculatorPage() {
     );
   }
 
+  async function swapItemFood(item: DailyPlanItem, replacementFoodId: string) {
+    const meal = meals.find((entry) => entry.items.some((candidate) => candidate.id === item.id));
+    const currentFood = foods.find((food) => food.id === item.food_id);
+    const replacementFood = foods.find((food) => food.id === replacementFoodId);
+    if (!meal || !currentFood || !replacementFood) return;
+    if (!["carb", "protein", "fat"].includes(currentFood.category)) return;
+
+    const macroKey =
+      currentFood.category === "protein"
+        ? "protein"
+        : currentFood.category === "carb"
+          ? "carbs"
+          : "fat";
+    const currentMacroAmount = calculateFoodMacros(currentFood, Number(item.amount))[macroKey];
+    const replacementBaseAmount =
+      replacementFood.serving_mode === "grams" ? Number(replacementFood.base_grams || 100) : 1;
+    const replacementBaseMacro =
+      calculateFoodMacros(replacementFood, replacementBaseAmount)[macroKey];
+    if (replacementBaseMacro <= 0) {
+      setMessage("That replacement does not contain enough of the same macro to swap cleanly.");
+      return;
+    }
+    const rawAmount = (currentMacroAmount / replacementBaseMacro) * replacementBaseAmount;
+    const step = replacementFood.serving_mode === "grams" ? 5 : 0.25;
+    const nextAmount = Math.max(step, Math.round(rawAmount / step) * step);
+
+    await createClient()
+      .from("daily_plan_items")
+      .update({ food_id: replacementFood.id, amount: nextAmount })
+      .eq("id", item.id);
+
+    const nextMeals = meals.map((entry) => ({
+      ...entry,
+      items: entry.items.map((candidate) =>
+        candidate.id === item.id
+          ? { ...candidate, food_id: replacementFood.id, amount: nextAmount }
+          : candidate
+      ),
+    }));
+    setMeals(nextMeals);
+    const changedIndex = plannerSlots.findIndex((slot) => slot.key === meal.meal_slot);
+    await rebalanceFutureMeals(nextMeals, changedIndex);
+    setMessage(`${currentFood.name} swapped for ${replacementFood.name}.`);
+  }
+
   async function replaceMealWithItems(
     meal: PlannedMeal,
     template: MealTemplate,
@@ -522,6 +577,13 @@ export default function CalculatorPage() {
                       {meal.items.map((item) => {
                         const food = foods.find((candidate) => candidate.id === item.food_id);
                         if (!food) return null;
+                        const swapCandidates = foods.filter(
+                          (candidate) =>
+                            candidate.category === food.category &&
+                            candidate.id !== food.id &&
+                            candidate.is_available !== false &&
+                            ["carb", "protein", "fat"].includes(food.category)
+                        );
                         return (
                           <div key={item.id} className="surface-strong flex items-center justify-between gap-3 rounded-2xl p-3">
                             <div>
@@ -533,6 +595,22 @@ export default function CalculatorPage() {
       </div>
                             </div>
                             <div className="flex items-center gap-2">
+                              {swapCandidates.length > 0 && (
+                                <select
+                                  className="max-w-40 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                                  defaultValue=""
+                                  onChange={(event) => {
+                                    if (event.target.value) void swapItemFood(item, event.target.value);
+                                  }}
+                                >
+                                  <option value="">Swap {food.category}</option>
+                                  {swapCandidates.map((candidate) => (
+                                    <option key={candidate.id} value={candidate.id}>
+                                      {candidate.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
                               <input className="w-24 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" type="number" min="0" step={food.serving_mode === "grams" ? "5" : "0.25"} value={item.amount} onChange={(event) => updateItemAmount(item.id, Number(event.target.value))} />
                               <button onClick={() => removeItem(item.id)} className="rounded-xl bg-white/6 p-2"><Trash2 className="h-4 w-4" /></button>
                             </div>

@@ -67,6 +67,17 @@ export default function ProfilePage() {
     return () => window.clearTimeout(timeoutId);
   }, [loadProfiles]);
 
+  useEffect(() => {
+    function syncSelectedProfile() {
+      const rememberedProfileId = window.localStorage.getItem("selected-profile-id");
+      const rememberedProfile = profiles.find((profile) => profile.id === rememberedProfileId);
+      if (rememberedProfile) loadProfile(rememberedProfile, false);
+    }
+
+    window.addEventListener("selected-profile-changed", syncSelectedProfile);
+    return () => window.removeEventListener("selected-profile-changed", syncSelectedProfile);
+  }, [profiles]);
+
   function updateField(field: keyof ProfileForm, value: string) {
     setForm((current) => ({
       ...current,

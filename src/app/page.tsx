@@ -3,14 +3,13 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Apple, ArrowRight, Dumbbell, Flame, Repeat2, UserRound } from "lucide-react";
+import { Apple, ArrowRight, Dumbbell, Flame, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types";
 
 const cards = [
   { title: "Daily Calculator", description: "Build meals and track macros.", href: "/calculator", icon: Dumbbell },
   { title: "Foods", description: "Browse serving-based foods.", href: "/foods", icon: Apple },
-  { title: "Macro Swaps", description: "Trade foods without drifting off target.", href: "/swaps", icon: Repeat2 },
   { title: "Fasting", description: "Keep the eating window clean.", href: "/fasting", icon: Flame },
   { title: "Profile", description: "Tune calories and body goals.", href: "/profile", icon: UserRound },
 ];
