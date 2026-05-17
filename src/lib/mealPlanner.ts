@@ -281,7 +281,8 @@ export function rebalanceMealItems(
   items: MealTemplateItem[],
   foods: Food[],
   target: MacroTotals,
-  rules: MealRule[] = []
+  rules: MealRule[] = [],
+  slot?: MealSlot
 ) {
   const foodById = new Map(foods.map((food) => [food.id, food]));
   const nextItems = items.map((item) => ({ ...item }));
@@ -301,6 +302,9 @@ export function rebalanceMealItems(
           minimumAmountForFood(food),
           roundAmount(item.amount + step * direction, step)
         );
+        if (food.category === "protein" && (slot === "lunch" || slot === "dinner") && candidateAmount < 100) {
+          continue;
+        }
         if (!isAmountAllowed(item, candidateAmount, food, rules)) continue;
         if (candidateAmount === item.amount) continue;
         const candidateItems = nextItems.map((candidate) =>
@@ -358,7 +362,8 @@ export function planRemainingMealsByBudget(
         option.items,
         foods,
         perMealTarget,
-        rules.filter((rule) => rule.meal_slot === meal.slot && rule.is_active)
+        rules.filter((rule) => rule.meal_slot === meal.slot && rule.is_active),
+        meal.slot
       ),
     }));
     const best =
@@ -470,6 +475,14 @@ function tuneWholeDay(
                   rule.meal_slot === selections[mealIndex].template.meal_slot
               )
             )
+          ) {
+            continue;
+          }
+          if (
+            food.category === "protein" &&
+            (selections[mealIndex].template.meal_slot === "lunch" ||
+              selections[mealIndex].template.meal_slot === "dinner") &&
+            candidateAmount < 100
           ) {
             continue;
           }
