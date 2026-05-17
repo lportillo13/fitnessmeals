@@ -29,6 +29,7 @@ export default function MealsPage() {
   const [mealStyle, setMealStyle] = useState("");
   const [isGeneratingAiMeal, setIsGeneratingAiMeal] = useState(false);
   const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual");
+  const [generationState, setGenerationState] = useState<"idle" | "generating" | "success">("idle");
   const [mealSearch, setMealSearch] = useState("");
   const [mealSlotFilter, setMealSlotFilter] = useState<MealSlot | "all">("all");
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
@@ -177,6 +178,7 @@ export default function MealsPage() {
     }
 
     setIsGeneratingAiMeal(true);
+    setGenerationState("generating");
     setMessage("");
     try {
       const response = await fetch("/api/meal-plan", {
@@ -198,6 +200,7 @@ export default function MealsPage() {
 
       if (!response.ok || !payload.meal_name || !payload.items) {
         setMessage(payload.error || "AI could not create a meal.");
+        setGenerationState("idle");
         return;
       }
 
@@ -209,8 +212,10 @@ export default function MealsPage() {
         }))
       );
       setMessage("AI meal created. Review it, then save.");
+      setGenerationState("success");
     } catch {
       setMessage("AI meal generation failed before the server returned a response.");
+      setGenerationState("idle");
     } finally {
       setIsGeneratingAiMeal(false);
     }
@@ -612,6 +617,17 @@ export default function MealsPage() {
         </section>
       </div>
 
+      {generationState !== "idle" && (
+        <GenerationModal
+          title={generationState === "generating" ? "Generating meal" : "Meal generated"}
+          body={
+            generationState === "generating"
+              ? "Designing a meal from the available foods and current profile targets."
+              : "The meal was generated successfully. Review it, then save it."
+          }
+          onClose={generationState === "success" ? () => setGenerationState("idle") : undefined}
+        />
+      )}
     </main>
   );
 }
@@ -654,4 +670,30 @@ function getDescriptiveTemplateName(
     .map((food) => food.replace(" cooked", ""));
 
   return mainFoods.join(" + ");
+}
+
+function GenerationModal({
+  title,
+  body,
+  onClose,
+}: {
+  title: string;
+  body: string;
+  onClose?: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
+      <div className="surface w-full max-w-md rounded-3xl p-6 text-center">
+        <h2 className="text-2xl font-bold">{title}</h2>
+        <p className="muted mt-3">{body}</p>
+        {onClose ? (
+          <button onClick={onClose} className="mt-5 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black">
+            Done
+          </button>
+        ) : (
+          <div className="mx-auto mt-5 h-8 w-8 animate-spin rounded-full border-4 border-white/15 border-t-lime-300" />
+        )}
+      </div>
+    </div>
+  );
 }

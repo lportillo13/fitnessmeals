@@ -38,6 +38,7 @@ export default function ProfilePage() {
   const [form, setForm] = useState<ProfileForm>(defaultForm);
   const [message, setMessage] = useState("");
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  const [generationState, setGenerationState] = useState<"idle" | "generating" | "success">("idle");
   const result = calculateGoalTargets(form);
 
   const loadProfiles = useCallback(async () => {
@@ -162,6 +163,7 @@ export default function ProfilePage() {
     }
 
     setIsGeneratingPlan(true);
+    setGenerationState("generating");
     setMessage("");
     const supabase = createClient();
     try {
@@ -180,6 +182,7 @@ export default function ProfilePage() {
         .single();
       if (updateError) {
         setMessage(updateError.message);
+        setGenerationState("idle");
         return;
       }
 
@@ -190,6 +193,7 @@ export default function ProfilePage() {
       const foods = foodData || [];
       if (foods.length === 0) {
         setMessage("Mark at least one food as available before generating a plan.");
+        setGenerationState("idle");
         return;
       }
 
@@ -213,6 +217,7 @@ export default function ProfilePage() {
       };
       if (!response.ok || !payload.meals) {
         setMessage(payload.error || "AI could not create the nutrition plan.");
+        setGenerationState("idle");
         return;
       }
 
@@ -253,9 +258,11 @@ export default function ProfilePage() {
           ? `Nutrition plan created. ${payload.plan_summary}`
           : "Nutrition plan created."
       );
+      setGenerationState("success");
       await loadProfiles();
     } catch {
       setMessage("Nutrition plan generation failed before the server returned a response.");
+      setGenerationState("idle");
     } finally {
       setIsGeneratingPlan(false);
     }
@@ -296,6 +303,17 @@ export default function ProfilePage() {
 
           <div className="space-y-3">
             <TextInput label="Name" value={form.name} onChange={(v) => updateField("name", v)} />
+            <label className="block">
+              <span className="text-sm font-medium">Sex</span>
+              <select
+                className="mt-1 w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                value={form.sex}
+                onChange={(e) => updateField("sex", e.target.value)}
+              >
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+              </select>
+            </label>
             <Input label="Age" value={form.age} onChange={(v) => updateField("age", v)} />
             <Input label="Weight lb" value={form.weightLb} onChange={(v) => updateField("weightLb", v)} />
             <Input label="Height inches" value={form.heightIn} onChange={(v) => updateField("heightIn", v)} />
@@ -356,6 +374,17 @@ export default function ProfilePage() {
           </div>
         </aside>
       </div>
+      {generationState !== "idle" && (
+        <GenerationModal
+          title={generationState === "generating" ? "Generating nutrition plan" : "Nutrition plan ready"}
+          body={
+            generationState === "generating"
+              ? "Building meals from this profile, its goal, and the foods currently available."
+              : "Your new nutrition plan and saved meals were generated successfully."
+          }
+          onClose={generationState === "success" ? () => setGenerationState("idle") : undefined}
+        />
+      )}
     </main>
   );
 }
@@ -408,6 +437,32 @@ function Result({ label, value }: { label: string; value: string }) {
     <div className="surface-strong flex justify-between rounded-2xl p-3">
       <span>{label}</span>
       <strong>{value}</strong>
+    </div>
+  );
+}
+
+function GenerationModal({
+  title,
+  body,
+  onClose,
+}: {
+  title: string;
+  body: string;
+  onClose?: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
+      <div className="surface w-full max-w-md rounded-3xl p-6 text-center">
+        <h2 className="text-2xl font-bold">{title}</h2>
+        <p className="muted mt-3">{body}</p>
+        {onClose ? (
+          <button onClick={onClose} className="mt-5 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black">
+            Done
+          </button>
+        ) : (
+          <div className="mx-auto mt-5 h-8 w-8 animate-spin rounded-full border-4 border-white/15 border-t-lime-300" />
+        )}
+      </div>
     </div>
   );
 }
