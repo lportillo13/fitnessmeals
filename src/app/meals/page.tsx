@@ -30,6 +30,7 @@ export default function MealsPage() {
   const [ruleFoodId, setRuleFoodId] = useState("");
   const [mealStyle, setMealStyle] = useState("");
   const [isGeneratingAiMeal, setIsGeneratingAiMeal] = useState(false);
+  const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual");
 
   useEffect(() => {
     async function loadInitialData() {
@@ -156,38 +157,42 @@ export default function MealsPage() {
 
     setIsGeneratingAiMeal(true);
     setMessage("");
-    const response = await fetch("/api/meal-plan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        profile,
-        foods: foods.filter((food) => food.is_available !== false),
-        rules,
-        meal_slot: templateSlot,
-        style: mealStyle,
-      }),
-    });
-    const payload = (await response.json()) as {
-      meal_name?: string;
-      items?: { food_id: string; amount: number }[];
-      error?: string;
-    };
+    try {
+      const response = await fetch("/api/meal-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile,
+          foods: foods.filter((food) => food.is_available !== false),
+          rules,
+          meal_slot: templateSlot,
+          style: mealStyle,
+        }),
+      });
+      const payload = (await response.json()) as {
+        meal_name?: string;
+        items?: { food_id: string; amount: number }[];
+        error?: string;
+      };
 
-    if (!response.ok || !payload.meal_name || !payload.items) {
-      setMessage(payload.error || "AI could not create a meal.");
+      if (!response.ok || !payload.meal_name || !payload.items) {
+        setMessage(payload.error || "AI could not create a meal.");
+        return;
+      }
+
+      setTemplateName(payload.meal_name);
+      setDraftItems(
+        payload.items.map((item) => ({
+          foodId: item.food_id,
+          amount: item.amount,
+        }))
+      );
+      setMessage("AI meal created. Review it, then save.");
+    } catch {
+      setMessage("AI meal generation failed before the server returned a response.");
+    } finally {
       setIsGeneratingAiMeal(false);
-      return;
     }
-
-    setTemplateName(payload.meal_name);
-    setDraftItems(
-      payload.items.map((item) => ({
-        foodId: item.food_id,
-        amount: item.amount,
-      }))
-    );
-    setMessage("AI meal created. Review it, then save.");
-    setIsGeneratingAiMeal(false);
   }
 
   async function saveRule() {
@@ -338,6 +343,27 @@ export default function MealsPage() {
           <p className="eyebrow mb-2 text-xs font-semibold">Meal builder</p>
           <h1 className="mb-4 text-4xl font-bold">Saved Meals</h1>
 
+          <div className="mb-4 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setCreationMode("manual")}
+              className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                creationMode === "manual" ? "bg-lime-300 text-black" : "bg-white/8"
+              }`}
+            >
+              Create manually
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreationMode("ai")}
+              className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                creationMode === "ai" ? "bg-lime-300 text-black" : "bg-white/8"
+              }`}
+            >
+              Create with AI
+            </button>
+          </div>
+
           <div className="grid gap-3 md:grid-cols-3">
             <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" placeholder="Meal name" value={templateName} onChange={(event) => setTemplateName(event.target.value)} />
             <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={templateSlot} onChange={(event) => setTemplateSlot(event.target.value as MealSlot)}>
@@ -352,22 +378,25 @@ export default function MealsPage() {
             </select>
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
-            <input
-              className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
-              placeholder="Style: Latin, simple, high protein..."
-              value={mealStyle}
-              onChange={(event) => setMealStyle(event.target.value)}
-            />
-            <button
-              onClick={generateAiMeal}
-              disabled={isGeneratingAiMeal}
-              className="rounded-2xl bg-white/8 px-5 py-3 font-semibold disabled:opacity-60"
-            >
-              {isGeneratingAiMeal ? "Designing..." : "AI create meal"}
-            </button>
-          </div>
+          {creationMode === "ai" && (
+            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
+              <input
+                className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                placeholder="Style: Latin, simple, high protein..."
+                value={mealStyle}
+                onChange={(event) => setMealStyle(event.target.value)}
+              />
+              <button
+                onClick={generateAiMeal}
+                disabled={isGeneratingAiMeal}
+                className="rounded-2xl bg-white/8 px-5 py-3 font-semibold disabled:opacity-60"
+              >
+                {isGeneratingAiMeal ? "Designing..." : "Design AI meal"}
+              </button>
+            </div>
+          )}
 
+          {creationMode === "manual" && (
           <div className="mt-4 grid gap-3 md:grid-cols-[1fr_160px_auto]">
             <div className="relative">
               <input className="w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white" placeholder="Search food" value={foodSearch} onChange={(event) => { setFoodSearch(event.target.value); setSelectedFoodId(""); }} />
@@ -384,6 +413,7 @@ export default function MealsPage() {
             <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" value={amount} onChange={(event) => setAmount(Number(event.target.value))} />
             <button onClick={addDraftItem} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold"><Plus className="h-4 w-4" />Add</button>
           </div>
+          )}
 
           <div className="mt-4 space-y-2">
             {draftItems.map((item, index) => {
