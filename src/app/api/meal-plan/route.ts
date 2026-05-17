@@ -57,59 +57,66 @@ const responseSchema = {
 } as const;
 
 export async function POST(request: Request) {
-  if (!process.env.OPENAI_API_KEY) {
-    return Response.json({ error: "Missing OPENAI_API_KEY on the server." }, { status: 500 });
-  }
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      return Response.json({ error: "Missing OPENAI_API_KEY on the server." }, { status: 500 });
+    }
 
-  const parsed = requestSchema.safeParse(await request.json());
-  if (!parsed.success) {
-    return Response.json({ error: "Invalid request body." }, { status: 400 });
-  }
+    const parsed = requestSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return Response.json({ error: "Invalid request body." }, { status: 400 });
+    }
 
-  const { profile, foods, rules, meal_slot, style } = parsed.data;
-  const allowedFoodIds = new Set(foods.map((food) => food.id));
-  const slotRules = rules.filter((rule) => rule.is_active && rule.meal_slot === meal_slot);
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const response = await client.responses.create({
-    model: process.env.OPENAI_MEAL_MODEL || "gpt-5-mini",
-    input: [
-      {
-        role: "system",
-        content:
-          "You are a practical meal planner. Create one meal that makes culinary sense for a normal human to eat. Never create bizarre combinations such as tuna with banana or milk unless the user explicitly requests them. Use only the provided food IDs. Respect active rules. Return JSON only.",
+    const { profile, foods, rules, meal_slot, style } = parsed.data;
+    const allowedFoodIds = new Set(foods.map((food) => food.id));
+    const slotRules = rules.filter((rule) => rule.is_active && rule.meal_slot === meal_slot);
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const response = await client.responses.create({
+      model: process.env.OPENAI_MEAL_MODEL || "gpt-5-mini",
+      input: [
+        {
+          role: "system",
+          content:
+            "You are a practical meal planner. Create one meal that makes culinary sense for a normal human to eat. Never create bizarre combinations such as tuna with banana or milk unless the user explicitly requests them. Use only the provided food IDs. Respect active rules. Return JSON only.",
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            meal_slot,
+            day_goal: profile,
+            style: style || "balanced, practical, varied",
+            foods,
+            active_rules_for_this_slot: slotRules,
+            instruction:
+              "Create one sensible reusable meal for this slot using only available foods. Use realistic quantities and choose foods that belong together. Make it useful inside the user's daily goal.",
+          }),
+        },
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "meal_template",
+          strict: true,
+          schema: responseSchema,
+        },
       },
-      {
-        role: "user",
-        content: JSON.stringify({
-          meal_slot,
-          day_goal: profile,
-          style: style || "balanced, practical, varied",
-          foods,
-          active_rules_for_this_slot: slotRules,
-          instruction:
-            "Create one sensible reusable meal for this slot using only available foods. Use realistic quantities and choose foods that belong together. Make it useful inside the user's daily goal.",
-        }),
-      },
-    ],
-    text: {
-      format: {
-        type: "json_schema",
-        name: "meal_template",
-        strict: true,
-        schema: responseSchema,
-      },
-    },
-  });
+    });
 
-  const payload = JSON.parse(response.output_text) as {
-    meal_name: string;
-    items: { food_id: string; amount: number }[];
-  };
+    const payload = JSON.parse(response.output_text) as {
+      meal_name: string;
+      items: { food_id: string; amount: number }[];
+    };
 
-  const usesOnlyAllowedFoods = payload.items.every((item) => allowedFoodIds.has(item.food_id));
-  if (!usesOnlyAllowedFoods) {
-    return Response.json({ error: "AI returned a food that is not available." }, { status: 502 });
+    const usesOnlyAllowedFoods = payload.items.every((item) => allowedFoodIds.has(item.food_id));
+    if (!usesOnlyAllowedFoods) {
+      return Response.json({ error: "AI returned a food that is not available." }, { status: 502 });
+    }
+
+    return Response.json(payload);
+  } catch (error) {
+    console.error("meal-plan route failed", error);
+    const message =
+      error instanceof Error ? error.message : "Unknown server error during AI meal generation.";
+    return Response.json({ error: message }, { status: 500 });
   }
-
-  return Response.json(payload);
 }
