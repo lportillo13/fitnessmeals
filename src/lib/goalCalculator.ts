@@ -9,18 +9,6 @@ type GoalInput = {
   goalDate: string;
 };
 
-const defaultProfile = {
-  age: 31,
-  sex: "female",
-  weightLb: 157,
-  heightIn: 63,
-  bodyFatPercent: 32,
-  trainingDaysPerWeek: 4,
-  stepsPerDay: 5000,
-  goalLossLb: 15,
-  goalDate: "2026-08-01",
-};
-
 export function calculateBmr({
   age,
   sex,
@@ -60,8 +48,12 @@ export function calculateGoalTargets(input: GoalInput) {
 
   const requiredDailyDeficit = (input.goalLossLb * 3500) / daysUntilGoal;
 
-  const calorieTarget = Math.round(
-    Math.max(1300, Math.min(1550, tdee - requiredDailyDeficit))
+  const calorieFloor = input.sex === "female" ? 1200 : 1500;
+  const calorieTarget = Math.round(Math.max(calorieFloor, tdee - requiredDailyDeficit));
+  const proteinTarget = Math.round(input.weightLb * 0.8);
+  const fatTarget = Math.round(Math.max(40, input.weightLb * 0.3));
+  const carbsTarget = Math.round(
+    Math.max(0, (calorieTarget - proteinTarget * 4 - fatTarget * 9) / 4)
   );
 
   return {
@@ -69,8 +61,8 @@ export function calculateGoalTargets(input: GoalInput) {
     tdee: Math.round(tdee),
     requiredDailyDeficit: Math.round(requiredDailyDeficit),
     calorieTarget,
-    proteinTarget: 130,
-    carbsTarget: 135,
-    fatTarget: 45,
+    proteinTarget,
+    carbsTarget,
+    fatTarget,
   };
 }

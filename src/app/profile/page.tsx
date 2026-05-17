@@ -165,9 +165,27 @@ export default function ProfilePage() {
     setMessage("");
     const supabase = createClient();
     try {
+      const targetPayload = {
+        calorie_target: result.calorieTarget,
+        protein_target: result.proteinTarget,
+        carbs_target: result.carbsTarget,
+        fat_target: result.fatTarget,
+        goal_instruction: form.goalInstruction,
+      };
+      const { data: updatedProfile, error: updateError } = await supabase
+        .from("meal_profiles")
+        .update(targetPayload)
+        .eq("id", form.id)
+        .select("*")
+        .single();
+      if (updateError) {
+        setMessage(updateError.message);
+        return;
+      }
+
       const [{ data: foodData }, { data: profileData }] = await Promise.all([
         supabase.from("foods").select("*").eq("is_available", true).order("name"),
-        supabase.from("meal_profiles").select("*").eq("id", form.id).single(),
+        Promise.resolve({ data: updatedProfile }),
       ]);
       const foods = foodData || [];
       if (foods.length === 0) {
@@ -235,6 +253,7 @@ export default function ProfilePage() {
           ? `Nutrition plan created. ${payload.plan_summary}`
           : "Nutrition plan created."
       );
+      await loadProfiles();
     } catch {
       setMessage("Nutrition plan generation failed before the server returned a response.");
     } finally {
