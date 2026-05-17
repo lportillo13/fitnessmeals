@@ -182,6 +182,16 @@ export default function MealsPage() {
     setRules((current) => current.filter((rule) => rule.id !== ruleId));
   }
 
+  async function deleteTemplate(templateId: string) {
+    const { error } = await createClient().from("meal_templates").delete().eq("id", templateId);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setTemplates((current) => current.filter((template) => template.id !== templateId));
+    setMessage("Meal deleted.");
+  }
+
   async function importJazminPlan() {
     if (!selectedProfileId) {
       setMessage("Choose Jazmin's profile first.");
@@ -335,7 +345,14 @@ export default function MealsPage() {
         <aside className="surface rounded-3xl p-5">
           <h2 className="mb-4 text-2xl font-bold">Saved meals</h2>
           <div className="space-y-2">
-            {templates.map((template) => <div key={template.id} className="surface-strong rounded-2xl p-3">{template.name}</div>)}
+            {templates.map((template) => (
+              <div key={template.id} className="surface-strong flex items-center justify-between rounded-2xl p-3">
+                <span>{template.name}</span>
+                <button onClick={() => deleteTemplate(template.id)} className="rounded-xl bg-white/6 p-2">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
           </div>
         </aside>
       </div>

@@ -5,6 +5,7 @@ import { CheckCircle2, Plus, RefreshCw, Shuffle, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   buildTemplateOptions,
+  buildSyntheticOptions,
   chooseOptimizedDayPlan,
   getSlotOptions,
   planRemainingMealsByBudget,
@@ -142,7 +143,10 @@ export default function CalculatorPage() {
 
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
   const options = useMemo(
-    () => buildTemplateOptions(templates, templateItems, foods),
+    () => [
+      ...buildTemplateOptions(templates, templateItems, foods),
+      ...buildSyntheticOptions(foods),
+    ],
     [templates, templateItems, foods]
   );
   const selectedFoods = useMemo<SelectedFood[]>(
@@ -199,7 +203,9 @@ export default function CalculatorPage() {
     const mealRows = chosen.map((entry) => ({
       daily_plan_id: activePlan!.id,
       meal_slot: entry.slot,
-      meal_template_id: entry.selected!.template.id,
+      meal_template_id: entry.selected!.template.id.startsWith("synthetic-")
+        ? null
+        : entry.selected!.template.id,
       meal_name: entry.selected!.template.name,
     }));
     const { data: createdMeals } = await supabase
@@ -236,7 +242,7 @@ export default function CalculatorPage() {
     const { data: updatedMeal } = await supabase
       .from("daily_plan_meals")
       .update({
-        meal_template_id: option.template.id,
+        meal_template_id: option.template.id.startsWith("synthetic-") ? null : option.template.id,
         meal_name: option.template.name,
         completed: false,
       })
@@ -377,7 +383,7 @@ export default function CalculatorPage() {
     const { data: updatedMeal } = await supabase
       .from("daily_plan_meals")
       .update({
-        meal_template_id: template.id,
+        meal_template_id: template.id.startsWith("synthetic-") ? null : template.id,
         meal_name: template.name,
         completed: false,
       })
@@ -475,11 +481,15 @@ export default function CalculatorPage() {
                         return (
                           <div key={item.id} className="surface-strong flex items-center justify-between gap-3 rounded-2xl p-3">
                             <div>
-                              <div className="font-medium">{food.name}</div>
-                              <div className="muted text-sm">{food.serving_label}</div>
+      <div className="font-medium">{food.name}</div>
+      <div className="muted text-sm">
+        {food.serving_mode === "grams"
+          ? `${item.amount} g`
+          : `${item.amount} × ${food.serving_label}`}
+      </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              <input className="w-24 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" type="number" min="0" value={item.amount} onChange={(event) => updateItemAmount(item.id, Number(event.target.value))} />
+                              <input className="w-24 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" type="number" min="0" step={food.serving_mode === "grams" ? "5" : "0.25"} value={item.amount} onChange={(event) => updateItemAmount(item.id, Number(event.target.value))} />
                               <button onClick={() => removeItem(item.id)} className="rounded-xl bg-white/6 p-2"><Trash2 className="h-4 w-4" /></button>
                             </div>
                           </div>

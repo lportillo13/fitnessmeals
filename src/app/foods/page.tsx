@@ -153,6 +153,16 @@ export default function FoodsPage() {
     );
   }
 
+  async function deleteFood(foodId: string) {
+    const { error } = await createClient().from("foods").delete().eq("id", foodId);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setFoods((current) => current.filter((food) => food.id !== foodId));
+    setMessage("Food deleted.");
+  }
+
   async function lookupBarcode(code = barcode) {
     const cleaned = code.trim();
     if (!cleaned) {
@@ -513,14 +523,24 @@ export default function FoodsPage() {
                           </button>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => startEditing(food)}
-                          className="rounded-xl border border-white/10 p-2"
-                          aria-label={`Edit ${food.name}`}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => startEditing(food)}
+                            className="rounded-xl border border-white/10 p-2"
+                            aria-label={`Edit ${food.name}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteFood(food.id)}
+                            className="rounded-xl border border-white/10 p-2"
+                            aria-label={`Delete ${food.name}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
