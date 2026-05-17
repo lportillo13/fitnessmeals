@@ -450,7 +450,37 @@ export default function FoodsPage() {
               </button>
 
               {openSections[category] && (
-                <div className="overflow-x-auto">
+                <>
+                <div className="space-y-2 p-3 md:hidden">
+                  {categoryFoods.map((food) => (
+                    <div key={food.id} className="surface-strong flex items-center justify-between gap-3 rounded-2xl p-3">
+                      <div className="font-medium">{food.name}</div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleAvailability(food)}
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            food.is_available === false
+                              ? "bg-white/8 text-slate-300"
+                              : "bg-lime-300 text-black"
+                          }`}
+                        >
+                          {food.is_available === false ? "No" : "Yes"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => startEditing(food)}
+                          className="rounded-xl border border-white/10 p-2"
+                          aria-label={`Edit ${food.name}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full text-sm">
                     <thead className="bg-white/5 text-left">
                       <tr>
@@ -519,6 +549,7 @@ export default function FoodsPage() {
                     </tbody>
                   </table>
                 </div>
+                </>
               )}
             </section>
           ))}
