@@ -649,8 +649,8 @@ export default function CalculatorPage() {
                       <p className="muted max-w-full break-words text-sm">{meal?.meal_name || "No meal selected yet."}</p>
                     </button>
                     {meal && (
-                      <div className="flex min-w-0 w-full flex-wrap gap-2 md:w-auto">
-                        <button onClick={() => shuffleMeal(slot.key)} className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm"><Shuffle className="h-4 w-4" />Random swap</button>
+                      <div className="grid min-w-0 w-full grid-cols-2 gap-2 md:flex md:w-auto md:flex-wrap">
+                        <button onClick={() => shuffleMeal(slot.key)} className="inline-flex min-w-0 items-center justify-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm"><Shuffle className="h-4 w-4" />Random swap</button>
                         <MealOptionSelect
                           value={meal.meal_template_id || ""}
                           options={slotOptions}
@@ -659,7 +659,7 @@ export default function CalculatorPage() {
                             if (option) void replaceMealAndRebalance(slot.key, option);
                           }}
                         />
-                        <label className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm">
+                        <label className="col-span-2 inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm md:col-span-1">
                           <input type="checkbox" checked={meal.completed} onChange={(event) => toggleCompleted(meal.id, event.target.checked)} />
                           <CheckCircle2 className="h-4 w-4" />Completed
                         </label>
