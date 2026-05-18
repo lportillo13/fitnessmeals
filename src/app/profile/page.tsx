@@ -39,6 +39,7 @@ export default function ProfilePage() {
   const [message, setMessage] = useState("");
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const [generationState, setGenerationState] = useState<"idle" | "generating" | "success">("idle");
+  const [generationProgress, setGenerationProgress] = useState({ completed: 0, total: 18 });
   const result = calculateGoalTargets(form);
 
   const loadProfiles = useCallback(async () => {
@@ -166,6 +167,7 @@ export default function ProfilePage() {
 
     setIsGeneratingPlan(true);
     setGenerationState("generating");
+    setGenerationProgress({ completed: 0, total: 18 });
     setMessage("");
     const supabase = createClient();
     try {
@@ -199,21 +201,31 @@ export default function ProfilePage() {
         return;
       }
 
-      const batchSpecs = [
-        ...Array.from({ length: 5 }, () => ({ meal_slot: "breakfast" as const, count: 1 })),
-        ...Array.from({ length: 5 }, () => ({ meal_slot: "lunch" as const, count: 1 })),
-        ...Array.from({ length: 5 }, () => ({ meal_slot: "dinner" as const, count: 1 })),
-        ...Array.from({ length: 3 }, () => ({ meal_slot: "snack_1" as const, count: 1 })),
+      const generationStreams = [
+        { meal_slot: "breakfast" as const, total: 5 },
+        { meal_slot: "lunch" as const, total: 5 },
+        { meal_slot: "dinner" as const, total: 5 },
+        { meal_slot: "snack_1" as const, total: 3 },
       ];
-      const batchPayloads: {
-        meal_name: string;
-        meal_slot: "breakfast" | "snack_1" | "lunch" | "dinner";
-        items: { food_id: string; amount: number }[];
-      }[][] = [];
-
-      for (const batch of batchSpecs) {
-        batchPayloads.push(await generateMealBatch(batch, profileData, foods, form.goalInstruction));
-      }
+      const batchPayloads = await Promise.all(
+        generationStreams.map(async (stream) => {
+          const streamMeals = [];
+          for (let index = 0; index < stream.total; index += 1) {
+            const meals = await generateMealBatch(
+              { meal_slot: stream.meal_slot, count: 1 },
+              profileData,
+              foods,
+              form.goalInstruction
+            );
+            streamMeals.push(...meals);
+            setGenerationProgress((current) => ({
+              ...current,
+              completed: current.completed + meals.length,
+            }));
+          }
+          return streamMeals;
+        })
+      );
       const generatedMeals = batchPayloads.flat();
 
       const { data: oldTemplates } = await supabase
@@ -376,7 +388,7 @@ export default function ProfilePage() {
           title={generationState === "generating" ? "Generating nutrition plan" : "Nutrition plan ready"}
           body={
             generationState === "generating"
-              ? "Building meals from this profile, its goal, and the foods currently available."
+              ? `Building meals from this profile, its goal, and the foods currently available. ${generationProgress.completed}/${generationProgress.total} ready.`
               : "Your new nutrition plan and saved meals were generated successfully."
           }
           onClose={generationState === "success" ? () => setGenerationState("idle") : undefined}
@@ -473,10 +485,13 @@ async function generateMealBatch(
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 45000);
     try {
       const response = await fetch("/api/nutrition-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           profile,
           foods,
@@ -512,10 +527,17 @@ async function generateMealBatch(
       }
       return payload.meals;
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error("Meal generation failed.");
+      lastError =
+        error instanceof DOMException && error.name === "AbortError"
+          ? new Error("Meal generation timed out after 45 seconds.")
+          : error instanceof Error
+            ? error
+            : new Error("Meal generation failed.");
       if (attempt < 3) {
         await new Promise((resolve) => window.setTimeout(resolve, 1200 * attempt));
       }
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   }
 
