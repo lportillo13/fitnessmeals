@@ -52,6 +52,7 @@ export default function CalculatorPage() {
   const [manualAmount, setManualAmount] = useState(1);
   const [openMealSlot, setOpenMealSlot] = useState<MealSlot>("breakfast");
   const [freeDay, setFreeDay] = useState(false);
+  const [noRecalculate, setNoRecalculate] = useState(false);
   const [showManualAdd, setShowManualAdd] = useState(false);
 
   useEffect(() => {
@@ -111,6 +112,9 @@ export default function CalculatorPage() {
     const timeoutId = window.setTimeout(() => {
       setFreeDay(
         window.localStorage.getItem(`free-day:${selectedProfileId}:${getTodayKey()}`) === "true"
+      );
+      setNoRecalculate(
+        window.localStorage.getItem(`no-recalculate:${selectedProfileId}:${getTodayKey()}`) === "true"
       );
     }, 0);
     return () => window.clearTimeout(timeoutId);
@@ -175,7 +179,7 @@ export default function CalculatorPage() {
   );
   const selectedFoods = useMemo<SelectedFood[]>(
     () =>
-      meals.flatMap((meal) =>
+      meals.filter((meal) => meal.completed).flatMap((meal) =>
         meal.items
           .map((item) => {
             const food = foods.find((candidate) => candidate.id === item.food_id);
@@ -340,13 +344,17 @@ export default function CalculatorPage() {
     if (!changedMeal || !selectedProfile) return;
 
     const changedIndex = plannerSlots.findIndex((slot) => slot.key === changedMeal.meal_slot);
-    if (!freeDay) await rebalanceFutureMeals(nextMeals, changedIndex);
+    if (!freeDay && !noRecalculate) await rebalanceFutureMeals(nextMeals, changedIndex);
   }
 
   async function rebalanceFutureMeals(sourceMeals: PlannedMeal[], changedIndex: number) {
     if (!selectedProfile) return;
-    if (freeDay) {
-      setMessage("Free day is on, so automatic recalculation is paused.");
+    if (freeDay || noRecalculate) {
+      setMessage(
+        freeDay
+          ? "Free day is on, so automatic recalculation is paused."
+          : "No recalculate is on, so future meals stay unchanged."
+      );
       return;
     }
     const futureMeals = sourceMeals.filter(
@@ -437,7 +445,7 @@ export default function CalculatorPage() {
     setMeals(nextMeals);
     setFoodSearch("");
     setManualFoodId("");
-    if (!freeDay) {
+    if (!freeDay && !noRecalculate) {
       const changedIndex = plannerSlots.findIndex((slot) => slot.key === meal.meal_slot);
       await rebalanceFutureMeals(nextMeals, changedIndex);
     }
@@ -448,7 +456,7 @@ export default function CalculatorPage() {
     const nextMeals = meals.map((meal) => ({ ...meal, items: meal.items.filter((item) => item.id !== itemId) }));
     setMeals(nextMeals);
     const changedMeal = meals.find((meal) => meal.items.some((item) => item.id === itemId));
-    if (changedMeal && !freeDay) {
+    if (changedMeal && !freeDay && !noRecalculate) {
       const changedIndex = plannerSlots.findIndex((slot) => slot.key === changedMeal.meal_slot);
       await rebalanceFutureMeals(nextMeals, changedIndex);
     }
@@ -495,7 +503,7 @@ export default function CalculatorPage() {
     }));
     setMeals(nextMeals);
     const changedIndex = plannerSlots.findIndex((slot) => slot.key === meal.meal_slot);
-    if (!freeDay) await rebalanceFutureMeals(nextMeals, changedIndex);
+    if (!freeDay && !noRecalculate) await rebalanceFutureMeals(nextMeals, changedIndex);
     setMessage(`${currentFood.name} swapped for ${replacementFood.name}.`);
   }
 
@@ -573,6 +581,21 @@ export default function CalculatorPage() {
                   }}
                 />
                 Free day
+              </label>
+              <label className="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-4 py-3 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  checked={noRecalculate}
+                  onChange={(event) => {
+                    const nextValue = event.target.checked;
+                    setNoRecalculate(nextValue);
+                    window.localStorage.setItem(
+                      `no-recalculate:${selectedProfileId}:${getTodayKey()}`,
+                      String(nextValue)
+                    );
+                  }}
+                />
+                No recalculate
               </label>
             </div>
             {message && <p className="muted mt-3 text-sm">{message}</p>}
