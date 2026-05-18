@@ -1,10 +1,5 @@
-const CACHE_NAME = "pj-meals-v1";
+const CACHE_NAME = "pj-meals-v2";
 const APP_SHELL = [
-  "/",
-  "/profile",
-  "/foods",
-  "/meals",
-  "/calculator",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
 ];
@@ -28,6 +23,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   if (!event.request.url.startsWith("http")) return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+  if (!url.pathname.startsWith("/icons/")) return;
 
   event.respondWith(
     fetch(event.request)

@@ -11,7 +11,7 @@ import type { Food } from "@/lib/types";
 
 type EditableFoodFields = Pick<
   Food,
-  "calories" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g" | "max_amount" | "allowed_meal_slots"
+  "calories" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g" | "max_amount" | "allowed_meal_slots" | "serving_mode" | "serving_label" | "base_grams"
 >;
 
 type FoodDraft = Omit<Food, "id" | "user_id" | "is_public">;
@@ -108,6 +108,9 @@ export default function FoodsPage() {
       fiber_g: food.fiber_g,
       max_amount: food.max_amount,
       allowed_meal_slots: food.allowed_meal_slots || ["breakfast", "snack_1", "lunch", "snack_2", "dinner"],
+      serving_mode: food.serving_mode,
+      serving_label: food.serving_label,
+      base_grams: food.base_grams,
     });
     setMessage("");
   }
@@ -565,6 +568,53 @@ export default function FoodsPage() {
               </button>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
+              <label className="block">
+                <span className="text-sm font-medium">Unit mode</span>
+                <select
+                  className="mt-1 w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                  value={editValues.serving_mode}
+                  onChange={(event) =>
+                    setEditValues((current) =>
+                      current
+                        ? {
+                            ...current,
+                            serving_mode: event.target.value as Food["serving_mode"],
+                            base_grams:
+                              event.target.value === "grams"
+                                ? current.base_grams || 100
+                                : null,
+                          }
+                        : current
+                    )
+                  }
+                >
+                  <option value="grams">Grams</option>
+                  <option value="unit">Unit</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium">Serving label</span>
+                <input
+                  className="mt-1 w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                  value={editValues.serving_label}
+                  onChange={(event) =>
+                    setEditValues((current) =>
+                      current ? { ...current, serving_label: event.target.value } : current
+                    )
+                  }
+                />
+              </label>
+              {editValues.serving_mode === "grams" && (
+                <ModalNumber
+                  label="Base grams"
+                  value={editValues.base_grams ?? 100}
+                  onChange={(value) =>
+                    setEditValues((current) =>
+                      current ? { ...current, base_grams: value } : current
+                    )
+                  }
+                />
+              )}
               <ModalNumber label="Calories" value={editValues.calories} onChange={(value) => setEditValues((current) => current ? { ...current, calories: value } : current)} />
               <ModalNumber label="Max amount" value={editValues.max_amount ?? 0} onChange={(value) => setEditValues((current) => current ? { ...current, max_amount: value || null } : current)} />
               <ModalNumber label="Protein g" value={editValues.protein_g} onChange={(value) => setEditValues((current) => current ? { ...current, protein_g: value } : current)} />
