@@ -74,6 +74,17 @@ alter table public.daily_plan_items
   add column if not exists amount_mode text
   check (amount_mode in ('serving', 'grams'));
 
+create table if not exists public.progress_logs (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references public.meal_profiles(id) on delete cascade,
+  log_date date not null default current_date,
+  weight_lb numeric not null,
+  body_fat_percentage numeric,
+  note text,
+  created_at timestamptz not null default now(),
+  unique (profile_id, log_date)
+);
+
 update public.meal_templates
 set meal_slot = case
   when lower(name) like '%breakfast%' then 'breakfast'

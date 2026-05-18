@@ -107,3 +107,13 @@ export type DailyPlanItem = {
   amount: number;
   amount_mode?: "serving" | "grams" | null;
 };
+
+export type ProgressLog = {
+  id: string;
+  profile_id: string;
+  log_date: string;
+  weight_lb: number;
+  body_fat_percentage: number | null;
+  note: string | null;
+  created_at: string;
+};

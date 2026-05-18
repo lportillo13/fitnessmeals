@@ -26,6 +26,7 @@ import type {
   SelectedFood,
 } from "@/lib/types";
 import MacroSummary from "@/components/MacroSummary";
+import { fetchMotivation } from "@/lib/motivation";
 
 type PlannedMeal = DailyPlanMeal & {
   items: DailyPlanItem[];
@@ -440,6 +441,9 @@ export default function CalculatorPage() {
 
   async function toggleCompleted(mealId: string, completed: boolean) {
     await createClient().from("daily_plan_meals").update({ completed }).eq("id", mealId);
+    const nextMeals = meals.map((meal) =>
+      meal.id === mealId ? { ...meal, completed } : meal
+    );
     setMeals((current) => {
       const nextMeals = current.map((meal) =>
         meal.id === mealId ? { ...meal, completed } : meal
@@ -452,6 +456,19 @@ export default function CalculatorPage() {
       }
       return nextMeals;
     });
+    if (completed) {
+      const allCompleted =
+        nextMeals.length > 0 &&
+        plannerSlots.every((slot) =>
+          nextMeals.some((meal) => meal.meal_slot === slot.key && meal.completed)
+        );
+      const motivation = await fetchMotivation(
+        allCompleted ? "day_completed" : "meal_completed",
+        selectedProfile?.name,
+        allCompleted ? { meals_completed: nextMeals.length } : undefined
+      );
+      if (motivation) setMessage(motivation);
+    }
   }
 
   async function addManualFood() {

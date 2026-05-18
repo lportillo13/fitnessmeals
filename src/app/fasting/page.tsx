@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Bell, Coffee, Droplets, Flame, MoonStar, Play, Square } from "lucide-react";
+import { fetchMotivation } from "@/lib/motivation";
 
 const allowed = [
   "Water",
@@ -152,7 +153,11 @@ export default function FastingPage() {
     setSession(nextSession);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
     window.dispatchEvent(new Event("fasting-session-changed"));
-    setMessage("Fast ended.");
+    const completedCorrectly = Boolean(targetEnd && Date.now() >= targetEnd.getTime());
+    const motivation = completedCorrectly
+      ? await fetchMotivation("fast_completed", undefined, { target_hours: session.targetHours })
+      : "";
+    setMessage(motivation || "Fast ended.");
     await notify("Fast ended", "You ended your fast.");
   }
 
