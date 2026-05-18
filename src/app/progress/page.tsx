@@ -86,6 +86,22 @@ export default function ProgressPage() {
       setMessage(error.message);
       return;
     }
+    const { data: updatedProfile, error: profileError } = await createClient()
+      .from("meal_profiles")
+      .update({
+        weight_lb: weight,
+        current_body_fat_percentage: bodyFat || null,
+      })
+      .eq("id", profile.id)
+      .select("*")
+      .single();
+    if (profileError) {
+      setMessage(profileError.message);
+      return;
+    }
+    setProfiles((current) =>
+      current.map((item) => (item.id === profile.id ? (updatedProfile as Profile) : item))
+    );
     const nextLogs = [data as ProgressLog, ...logs.filter((log) => log.log_date !== getTodayKey())];
     setLogs(nextLogs);
     const nextAnalysis = analyzeProgress(profile, data as ProgressLog);
