@@ -17,6 +17,7 @@ alter table public.meal_template_items
 
 alter table public.meal_profiles
   add column if not exists goal_instruction text,
+  add column if not exists current_body_fat_percentage numeric,
   add column if not exists goal_body_fat_percentage numeric;
 
 create table if not exists public.meal_rules (

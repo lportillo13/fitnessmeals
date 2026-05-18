@@ -46,6 +46,7 @@ export type Profile = {
   training_days_per_week: number;
   steps_per_day: number;
   goal_loss_lb: number;
+  current_body_fat_percentage: number | null;
   goal_body_fat_percentage: number | null;
   goal_date: string;
   goal_instruction: string | null;
