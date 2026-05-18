@@ -263,6 +263,7 @@ export default function CalculatorPage() {
         daily_plan_meal_id: meal.id,
         food_id: item.food_id,
         amount: item.amount,
+        amount_mode: item.amount_mode,
       }));
     });
     const { data: createdItems } = await supabase.from("daily_plan_items").insert(rows).select("*");
@@ -302,6 +303,7 @@ export default function CalculatorPage() {
           daily_plan_meal_id: meal.id,
           food_id: item.food_id,
           amount: item.amount,
+          amount_mode: item.amount_mode,
         }))
       )
       .select("*");
@@ -329,6 +331,7 @@ export default function CalculatorPage() {
               daily_plan_meal_id: meal.id,
               food_id: item.food_id,
               amount: item.amount,
+              amount_mode: item.amount_mode,
             })),
           }
         : meal
@@ -600,6 +603,7 @@ export default function CalculatorPage() {
           daily_plan_meal_id: meal.id,
           food_id: item.food_id,
           amount: item.amount,
+          amount_mode: item.amount_mode,
         }))
       )
       .select("*");

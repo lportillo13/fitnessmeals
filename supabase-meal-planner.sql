@@ -11,6 +11,10 @@ alter table public.meal_templates
   check (meal_slot in ('breakfast', 'snack_1', 'lunch', 'snack_2', 'dinner')),
   add column if not exists is_default_daily boolean not null default false;
 
+alter table public.meal_template_items
+  add column if not exists amount_mode text
+  check (amount_mode in ('serving', 'grams'));
+
 alter table public.meal_profiles
   add column if not exists goal_instruction text,
   add column if not exists goal_body_fat_percentage numeric;

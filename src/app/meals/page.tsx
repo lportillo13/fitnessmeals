@@ -8,6 +8,7 @@ import type { Food, MealRule, MealSlot, MealTemplate, MealTemplateItem, Profile 
 type DraftItem = {
   foodId: string;
   amount: number;
+  amountMode: "serving" | "grams";
 };
 
 export default function MealsPage() {
@@ -22,6 +23,7 @@ export default function MealsPage() {
   const [foodSearch, setFoodSearch] = useState("");
   const [selectedFoodId, setSelectedFoodId] = useState("");
   const [amount, setAmount] = useState(1);
+  const [amountMode, setAmountMode] = useState<"serving" | "grams">("serving");
   const [message, setMessage] = useState("");
   const [rules, setRules] = useState<MealRule[]>([]);
   const [mealStyle, setMealStyle] = useState("");
@@ -104,6 +106,7 @@ export default function MealsPage() {
     (food) => food.profile_id == null || !selectedProfileId || food.profile_id === selectedProfileId
   );
   const selectedFood = visibleFoods.find((food) => food.id === selectedFoodId);
+  const canUseGrams = Boolean(selectedFood?.base_grams);
   const matchingFoods = visibleFoods
     .filter((food) => food.name.toLowerCase().includes(foodSearch.toLowerCase()))
     .slice(0, 8);
@@ -111,15 +114,17 @@ export default function MealsPage() {
   function chooseFood(food: Food) {
     setSelectedFoodId(food.id);
     setFoodSearch(food.name);
+    setAmountMode(food.serving_mode === "grams" ? "grams" : "serving");
     setAmount(food.serving_mode === "grams" ? Number(food.base_grams || 100) : 1);
   }
 
   function addDraftItem() {
     if (!selectedFoodId) return;
-    setDraftItems((current) => [...current, { foodId: selectedFoodId, amount }]);
+    setDraftItems((current) => [...current, { foodId: selectedFoodId, amount, amountMode }]);
     setSelectedFoodId("");
     setFoodSearch("");
     setAmount(1);
+    setAmountMode("serving");
   }
 
   function removeDraftItem(index: number) {
@@ -152,6 +157,7 @@ export default function MealsPage() {
       meal_template_id: template.id,
       food_id: item.foodId,
       amount: item.amount,
+      amount_mode: item.amountMode,
     }));
 
     const { data: createdItems, error: itemsError } = await supabase
@@ -210,6 +216,10 @@ export default function MealsPage() {
         payload.items.map((item) => ({
           foodId: item.food_id,
           amount: item.amount,
+          amountMode:
+            visibleFoods.find((food) => food.id === item.food_id)?.serving_mode === "grams"
+              ? "grams"
+              : "serving",
         }))
       );
       setMessage("AI meal created. Review it, then save.");
@@ -278,7 +288,7 @@ export default function MealsPage() {
 
   return (
     <main className="app-shell">
-      <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[390px_1fr]">
+      <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(460px,520px)_1fr]">
         <section className="surface rounded-3xl p-5">
           <p className="eyebrow mb-2 text-xs font-semibold">Meal builder</p>
           <h1 className="mb-2 text-3xl font-bold">Create meal</h1>
@@ -307,18 +317,20 @@ export default function MealsPage() {
             </button>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" placeholder="Meal name" value={templateName} onChange={(event) => setTemplateName(event.target.value)} />
-            <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={templateSlot} onChange={(event) => setTemplateSlot(event.target.value as MealSlot)}>
-              <option value="breakfast">Breakfast</option>
-              <option value="snack_1">Snack 1</option>
-              <option value="lunch">Lunch</option>
-              <option value="snack_2">Snack 2</option>
-              <option value="dinner">Dinner</option>
-            </select>
-            <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={selectedProfileId} onChange={(event) => setSelectedProfileId(event.target.value)}>
-              {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
-            </select>
+          <div className="rounded-3xl bg-white/[0.03] p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white sm:col-span-2" placeholder="Meal name" value={templateName} onChange={(event) => setTemplateName(event.target.value)} />
+              <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={templateSlot} onChange={(event) => setTemplateSlot(event.target.value as MealSlot)}>
+                <option value="breakfast">Breakfast</option>
+                <option value="snack_1">Snack 1</option>
+                <option value="lunch">Lunch</option>
+                <option value="snack_2">Snack 2</option>
+                <option value="dinner">Dinner</option>
+              </select>
+              <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={selectedProfileId} onChange={(event) => setSelectedProfileId(event.target.value)}>
+                {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+              </select>
+            </div>
           </div>
 
           {creationMode === "ai" && (
@@ -340,7 +352,9 @@ export default function MealsPage() {
           )}
 
           {creationMode === "manual" && (
-          <div className="mt-4 grid gap-3 md:grid-cols-[1fr_160px_auto]">
+          <div className="mt-4 rounded-3xl bg-white/[0.03] p-4">
+            <p className="mb-3 text-sm font-semibold text-slate-200">Add foods</p>
+            <div className="grid gap-3 sm:grid-cols-[1fr_120px] lg:grid-cols-[1fr_120px_120px_auto]">
             <div className="relative">
               <input className="w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white" placeholder="Search food" value={foodSearch} onChange={(event) => { setFoodSearch(event.target.value); setSelectedFoodId(""); }} />
               {foodSearch && !selectedFood && matchingFoods.length > 0 && (
@@ -353,8 +367,22 @@ export default function MealsPage() {
                 </div>
               )}
             </div>
-            <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" value={amount} onChange={(event) => setAmount(Number(event.target.value))} />
+            <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step={amountMode === "grams" ? "5" : "0.25"} value={amount} onChange={(event) => setAmount(Number(event.target.value))} />
+            <select
+              className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+              value={amountMode}
+              onChange={(event) => {
+                const nextMode = event.target.value as "serving" | "grams";
+                setAmountMode(nextMode);
+                if (!selectedFood) return;
+                setAmount(nextMode === "grams" ? Number(selectedFood.base_grams || 1) : 1);
+              }}
+            >
+              <option value="serving">Serving</option>
+              <option value="grams" disabled={!canUseGrams}>Grams</option>
+            </select>
             <button onClick={addDraftItem} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold"><Plus className="h-4 w-4" />Add</button>
+            </div>
           </div>
           )}
 
@@ -364,7 +392,7 @@ export default function MealsPage() {
               if (!food) return null;
               return (
                 <div key={`${item.foodId}-${index}`} className="surface-strong flex items-center justify-between rounded-2xl p-3">
-                  <div><div className="font-medium">{food.name}</div><div className="muted text-sm">{item.amount} {food.serving_mode === "grams" ? "g" : "unit(s)"}</div></div>
+                  <div><div className="font-medium">{food.name}</div><div className="muted text-sm">{item.amount} {item.amountMode === "grams" ? "g" : food.serving_label}</div></div>
                   <button onClick={() => removeDraftItem(index)} className="rounded-xl bg-white/6 p-2"><Trash2 className="h-4 w-4" /></button>
                 </div>
               );
@@ -457,7 +485,7 @@ export default function MealsPage() {
                           <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-black/15 px-3 py-2 text-sm">
                             <span>{food.name}</span>
                             <span className="muted">
-                              {item.amount} {food.serving_mode === "grams" ? "g" : food.serving_label}
+                              {item.amount} {item.amount_mode === "grams" || (!item.amount_mode && food.serving_mode === "grams") ? "g" : food.serving_label}
                             </span>
                           </div>
                         );

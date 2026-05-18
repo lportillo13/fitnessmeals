@@ -68,6 +68,7 @@ export type MealTemplateItem = {
   meal_template_id: string;
   food_id: string;
   amount: number;
+  amount_mode?: "serving" | "grams" | null;
 };
 
 export type MealRule = {

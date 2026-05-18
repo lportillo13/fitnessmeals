@@ -71,7 +71,11 @@ export function buildTemplateOptions(
         (totals, item) => {
           const food = foodById.get(item.food_id);
           if (!food) return totals;
-          const next = calculateFoodMacros(food, item.amount);
+          const next = calculateFoodMacros(
+            food,
+            item.amount,
+            item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving")
+          );
           return {
             calories: totals.calories + next.calories,
             protein: totals.protein + next.protein,
@@ -420,7 +424,11 @@ function totalForItems(items: MealTemplateItem[], foodById: Map<string, Food>) {
     (totals, item) => {
       const food = foodById.get(item.food_id);
       if (!food) return totals;
-      const next = calculateFoodMacros(food, item.amount);
+      const next = calculateFoodMacros(
+        food,
+        item.amount,
+        item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving")
+      );
       return {
         calories: totals.calories + next.calories,
         protein: totals.protein + next.protein,
