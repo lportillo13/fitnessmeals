@@ -106,6 +106,7 @@ export type DailyPlanItem = {
   food_id: string;
   amount: number;
   amount_mode?: "serving" | "grams" | null;
+  completed?: boolean;
 };
 
 export type ProgressLog = {

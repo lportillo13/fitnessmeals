@@ -367,6 +367,20 @@ export default function CalculatorPage() {
     if (!freeDay && !noRecalculate) await rebalanceFutureMeals(nextMeals, changedIndex);
   }
 
+  async function toggleItemCompleted(itemId: string, completed: boolean) {
+    await createClient().from("daily_plan_items").update({ completed }).eq("id", itemId);
+    setMeals((current) =>
+      current.map((meal) => ({
+        ...meal,
+        items: meal.items.map((item) => (item.id === itemId ? { ...item, completed } : item)),
+      }))
+    );
+    if (completed) {
+      const motivation = await fetchMotivation("meal_completed", selectedProfile?.name);
+      if (motivation) setMessage(motivation);
+    }
+  }
+
   async function rebalanceFutureMeals(sourceMeals: PlannedMeal[], changedIndex: number) {
     if (!selectedProfile) return;
     if (freeDay || noRecalculate) {
@@ -799,13 +813,20 @@ export default function CalculatorPage() {
                         );
                         return (
                           <div key={item.id} className="surface-strong flex items-center justify-between gap-3 rounded-2xl p-3">
-                            <div>
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(item.completed)}
+                                onChange={(event) => toggleItemCompleted(item.id, event.target.checked)}
+                              />
+                              <div>
       <div className="font-medium">{food.name}</div>
       <div className="muted text-sm">
         {itemAmountMode === "grams"
           ? `${item.amount} g`
           : `${item.amount} × ${food.serving_label}`}
       </div>
+                              </div>
                             </div>
                             <div className="flex items-center gap-2">
                               {swapCandidates.length > 0 && (
