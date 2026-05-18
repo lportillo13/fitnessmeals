@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Activity, Scale, TrendingDown } from "lucide-react";
+import { Activity, Scale, Trash2, TrendingDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import MotivationModal, { type MotivationTone } from "@/components/MotivationModal";
 import { fetchMotivation, instantMotivation } from "@/lib/motivation";
@@ -125,6 +125,39 @@ export default function ProgressPage() {
     setMessage("Progress saved.");
   }
 
+  async function deleteLog(logId: string) {
+    const logToDelete = logs.find((log) => log.id === logId);
+    if (!logToDelete || !profile) return;
+    const { error } = await createClient().from("progress_logs").delete().eq("id", logId);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    const nextLogs = logs.filter((log) => log.id !== logId);
+    setLogs(nextLogs);
+    if (logToDelete.id === latestLog?.id) {
+      const nextLatest = nextLogs[0];
+      const { data: updatedProfile, error: profileError } = await createClient()
+        .from("meal_profiles")
+        .update({
+          weight_lb: nextLatest?.weight_lb ?? profile.weight_lb,
+          current_body_fat_percentage:
+            nextLatest?.body_fat_percentage ?? profile.current_body_fat_percentage,
+        })
+        .eq("id", profile.id)
+        .select("*")
+        .single();
+      if (profileError) {
+        setMessage(profileError.message);
+        return;
+      }
+      setProfiles((current) =>
+        current.map((item) => (item.id === profile.id ? (updatedProfile as Profile) : item))
+      );
+    }
+    setMessage("Progress update deleted.");
+  }
+
   return (
     <main className="app-shell">
       <div className="mx-auto max-w-6xl space-y-4">
@@ -186,10 +219,18 @@ export default function ProgressPage() {
           </h2>
           <div className="space-y-2">
             {logs.map((log) => (
-              <div key={log.id} className="surface-strong grid gap-2 rounded-2xl p-4 sm:grid-cols-[140px_1fr_1fr]">
+              <div key={log.id} className="surface-strong grid gap-2 rounded-2xl p-4 sm:grid-cols-[140px_1fr_1fr_auto]">
                 <div>{log.log_date}</div>
                 <div>{log.weight_lb} lb</div>
                 <div>{log.body_fat_percentage ?? "—"}%</div>
+                <button
+                  type="button"
+                  onClick={() => deleteLog(log.id)}
+                  className="rounded-xl bg-white/6 p-2"
+                  aria-label={`Delete progress log from ${log.log_date}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
             ))}
             {logs.length === 0 && <p className="muted">No updates logged yet.</p>}
