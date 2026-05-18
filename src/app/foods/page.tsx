@@ -875,14 +875,10 @@ export default function FoodsPage() {
                   onChange={(event) =>
                     setEditValues((current) =>
                       current
-                        ? {
-                            ...current,
-                            serving_mode: event.target.value as Food["serving_mode"],
-                            base_grams:
-                              event.target.value === "grams"
-                                ? current.base_grams || 100
-                                : null,
-                          }
+                        ? nextServingModeValues(
+                            current,
+                            event.target.value as Food["serving_mode"]
+                          )
                         : current
                     )
                   }
@@ -903,17 +899,24 @@ export default function FoodsPage() {
                   }
                 />
               </label>
-              {editValues.serving_mode === "grams" && (
-                <ModalNumber
-                  label="Base grams"
-                  value={editValues.base_grams ?? 100}
-                  onChange={(value) =>
-                    setEditValues((current) =>
-                      current ? { ...current, base_grams: value } : current
-                    )
-                  }
-                />
-              )}
+              <ModalNumber
+                label={editValues.serving_mode === "grams" ? "Base grams" : "Grams per serving"}
+                value={editValues.base_grams ?? (editValues.serving_mode === "grams" ? 100 : 1)}
+                onChange={(value) =>
+                  setEditValues((current) =>
+                    current
+                      ? {
+                          ...current,
+                          base_grams: value,
+                          serving_label:
+                            current.serving_mode === "grams"
+                              ? `${value} g`
+                              : current.serving_label,
+                        }
+                      : current
+                  )
+                }
+              />
               <ModalNumber label="Calories" value={editValues.calories} onChange={(value) => setEditValues((current) => current ? { ...current, calories: value } : current)} />
               <ModalNumber label="Max amount" value={editValues.max_amount ?? 0} onChange={(value) => setEditValues((current) => current ? { ...current, max_amount: value || null } : current)} />
               <ModalNumber label="Protein g" value={editValues.protein_g} onChange={(value) => setEditValues((current) => current ? { ...current, protein_g: value } : current)} />
@@ -1028,6 +1031,26 @@ function formatServingSummary(
 
 function roundToOneDecimal(value: number) {
   return Math.round(value * 10) / 10;
+}
+
+function nextServingModeValues(
+  current: EditableFoodFields,
+  servingMode: Food["serving_mode"]
+): EditableFoodFields {
+  const baseGrams =
+    current.base_grams || (servingMode === "grams" ? 100 : 1);
+
+  return {
+    ...current,
+    serving_mode: servingMode,
+    base_grams: baseGrams,
+    serving_label:
+      servingMode === "grams"
+        ? `${baseGrams} g`
+        : current.serving_label === `${baseGrams} g`
+          ? "1 serving"
+          : current.serving_label,
+  };
 }
 
 function foodIdentityKey(food: Pick<Food, "name" | "brand" | "serving_label" | "base_grams">) {

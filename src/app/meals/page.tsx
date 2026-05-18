@@ -278,14 +278,6 @@ export default function MealsPage() {
     return matchesSlot && matchesSearch;
   });
 
-  const mealCounts = {
-    breakfast: templates.filter((template) => template.meal_slot === "breakfast").length,
-    snack_1: templates.filter((template) => template.meal_slot === "snack_1").length,
-    lunch: templates.filter((template) => template.meal_slot === "lunch").length,
-    snack_2: templates.filter((template) => template.meal_slot === "snack_2").length,
-    dinner: templates.filter((template) => template.meal_slot === "dinner").length,
-  };
-
   return (
     <main className="app-shell">
       <div className="mx-auto grid max-w-6xl gap-4">
@@ -433,14 +425,6 @@ export default function MealsPage() {
             </select>
           </div>
 
-          <div className="mb-4 grid gap-2 sm:grid-cols-5">
-            <CountPill label="Breakfast" value={mealCounts.breakfast} />
-            <CountPill label="Snack 1" value={mealCounts.snack_1} />
-            <CountPill label="Lunch" value={mealCounts.lunch} />
-            <CountPill label="Snack 2" value={mealCounts.snack_2} />
-            <CountPill label="Dinner" value={mealCounts.dinner} />
-          </div>
-
           <div className="space-y-3">
             {visibleTemplates.map((template) => {
               const items = templateItems.filter((item) => item.meal_template_id === template.id);
@@ -511,15 +495,6 @@ export default function MealsPage() {
         />
       )}
     </main>
-  );
-}
-
-function CountPill({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl bg-white/6 px-3 py-3 text-center">
-      <div className="text-lg font-bold">{value}</div>
-      <div className="muted text-xs">{label}</div>
-    </div>
   );
 }
 
