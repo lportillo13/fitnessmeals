@@ -3,17 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Apple, Dumbbell, Flame, House, Menu, Play, Soup, Square, TrendingDown, UserRound, X } from "lucide-react";
+import { Apple, ChevronDown, Dumbbell, Flame, House, Menu, Play, Soup, Square, TrendingDown, UserRound, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types";
 
 const navItems = [
   { label: "Home", href: "/", icon: House },
   { label: "Calculator", href: "/calculator", icon: Dumbbell },
+  { label: "Progress", href: "/progress", icon: TrendingDown },
+];
+
+const moreNavItems = [
   { label: "Foods", href: "/foods", icon: Apple },
   { label: "Meals", href: "/meals", icon: Soup },
   { label: "Fasting", href: "/fasting", icon: Flame },
-  { label: "Progress", href: "/progress", icon: TrendingDown },
   { label: "Profile", href: "/profile", icon: UserRound },
 ];
 
@@ -23,6 +26,7 @@ export default function Header() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [isFasting, setIsFasting] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
 
   useEffect(() => {
     async function loadProfiles() {
@@ -69,6 +73,10 @@ export default function Header() {
     window.addEventListener("fasting-session-changed", syncFast);
     return () => window.removeEventListener("fasting-session-changed", syncFast);
   }, []);
+
+  useEffect(() => {
+    setIsMoreOpen(false);
+  }, [pathname]);
 
   function changeProfile(profileId: string) {
     setSelectedProfileId(profileId);
@@ -129,6 +137,43 @@ export default function Header() {
                   </Link>
                 );
               })}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsMoreOpen((current) => !current)}
+                  className={`flex items-center gap-2 whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium transition ${
+                    moreNavItems.some((item) => item.href === pathname)
+                      ? "bg-lime-300 text-black shadow-[0_0_20px_rgba(124,255,79,0.25)]"
+                      : "text-slate-300 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  More
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+                {isMoreOpen && (
+                  <div className="surface absolute right-0 top-full z-50 mt-2 w-48 rounded-2xl p-2">
+                    {moreNavItems.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = pathname === item.href;
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={() => setIsMoreOpen(false)}
+                          className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
+                            isActive
+                              ? "bg-lime-300 text-black"
+                              : "text-slate-300 hover:bg-white/10 hover:text-white"
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {item.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </nav>
 
             {profiles.length > 0 && (
@@ -183,7 +228,7 @@ export default function Header() {
         {isOpen && (
           <div className="surface mt-3 rounded-3xl p-3 md:hidden">
             <nav className="grid grid-cols-2 gap-2">
-              {navItems.map((item) => {
+              {[...navItems, ...moreNavItems].map((item) => {
                 const isActive = pathname === item.href;
                 const Icon = item.icon;
 
