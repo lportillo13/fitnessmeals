@@ -131,6 +131,13 @@ export default function FoodsPage() {
     return () => window.removeEventListener("selected-profile-changed", syncSelectedProfile);
   }, []);
 
+  useEffect(() => {
+    document.body.style.overflow = editingFoodId ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [editingFoodId]);
+
   function startEditing(food: Food) {
     setEditingFoodId(food.id);
     setEditValues({
@@ -851,8 +858,8 @@ export default function FoodsPage() {
         </div>
       </div>
       {editingFoodId && editValues && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
-          <div className="surface w-full max-w-2xl rounded-3xl p-5">
+        <div className="modal-overlay fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
+          <div className="modal-panel surface w-full max-w-2xl rounded-3xl p-5">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-2xl font-bold">Edit food</h2>
               <button onClick={cancelEditing} className="rounded-xl bg-white/6 p-2">

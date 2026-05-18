@@ -8,6 +8,7 @@
   --panel-strong: rgba(22, 28, 44, 0.98);
   --line: rgba(255, 255, 255, 0.11);
   --neon: #7cff4f;
+  --neon-rgb: 124, 255, 79;
   --neon-alt: #18d7ff;
   --violet: #a855f7;
 }
@@ -24,7 +25,7 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   background-image:
-    radial-gradient(circle at top left, rgba(124, 255, 79, 0.14), transparent 28%),
+    radial-gradient(circle at top left, rgba(var(--neon-rgb), 0.14), transparent 28%),
     radial-gradient(circle at top right, rgba(24, 215, 255, 0.14), transparent 24%),
     linear-gradient(180deg, #05070b 0%, #090d16 100%);
   background-attachment: fixed;
@@ -76,6 +77,38 @@ body {
 
 .neon-ring {
   box-shadow: 0 0 0 1px rgba(124, 255, 79, 0.16), 0 0 30px rgba(124, 255, 79, 0.12);
+}
+
+html[data-profile-theme="jaz"] {
+  --neon: #f472b6;
+  --neon-rgb: 244, 114, 182;
+  --neon-alt: #c084fc;
+}
+
+html[data-profile-theme="jaz"] .bg-lime-300 {
+  background-color: #f472b6 !important;
+}
+
+html[data-profile-theme="jaz"] .text-lime-300 {
+  color: #f9a8d4 !important;
+}
+
+html[data-profile-theme="jaz"] .text-lime-100 {
+  color: #fce7f3 !important;
+}
+
+html[data-profile-theme="jaz"] .border-t-lime-300 {
+  border-top-color: #f472b6 !important;
+}
+
+.modal-overlay {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.modal-panel {
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
 }
 
 select {

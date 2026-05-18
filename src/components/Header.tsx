@@ -34,10 +34,24 @@ export default function Header() {
         loadedProfiles[0]?.id ||
         "";
       setSelectedProfileId(nextProfileId);
+      applyProfileTheme(loadedProfiles.find((profile) => profile.id === nextProfileId));
     }
 
     loadProfiles();
   }, []);
+
+  useEffect(() => {
+    function syncSelectedProfile() {
+      const rememberedProfileId = window.localStorage.getItem("selected-profile-id");
+      const nextProfile = profiles.find((profile) => profile.id === rememberedProfileId);
+      if (!nextProfile) return;
+      setSelectedProfileId(nextProfile.id);
+      applyProfileTheme(nextProfile);
+    }
+
+    window.addEventListener("selected-profile-changed", syncSelectedProfile);
+    return () => window.removeEventListener("selected-profile-changed", syncSelectedProfile);
+  }, [profiles]);
 
   useEffect(() => {
     function syncFast() {
@@ -58,6 +72,7 @@ export default function Header() {
   function changeProfile(profileId: string) {
     setSelectedProfileId(profileId);
     window.localStorage.setItem("selected-profile-id", profileId);
+    applyProfileTheme(profiles.find((profile) => profile.id === profileId));
     window.dispatchEvent(new Event("selected-profile-changed"));
   }
 
@@ -212,4 +227,9 @@ export default function Header() {
       </div>
     </header>
   );
+}
+
+function applyProfileTheme(profile?: Profile) {
+  document.documentElement.dataset.profileTheme =
+    profile?.name.toLowerCase().includes("jaz") ? "jaz" : "leo";
 }

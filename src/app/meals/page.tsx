@@ -509,9 +509,16 @@ function GenerationModal({
   body: string;
   onClose?: () => void;
 }) {
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
-      <div className="surface w-full max-w-md rounded-3xl p-6 text-center">
+    <div className="modal-overlay fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
+      <div className="modal-panel surface w-full max-w-md rounded-3xl p-6 text-center">
         <h2 className="text-2xl font-bold">{title}</h2>
         <p className="muted mt-3">{body}</p>
         {onClose ? (
