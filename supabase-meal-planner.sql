@@ -61,8 +61,13 @@ create table if not exists public.daily_plan_items (
   id uuid primary key default gen_random_uuid(),
   daily_plan_meal_id uuid not null references public.daily_plan_meals(id) on delete cascade,
   food_id uuid not null references public.foods(id) on delete cascade,
-  amount numeric not null check (amount >= 0)
+  amount numeric not null check (amount >= 0),
+  amount_mode text check (amount_mode in ('serving', 'grams'))
 );
+
+alter table public.daily_plan_items
+  add column if not exists amount_mode text
+  check (amount_mode in ('serving', 'grams'));
 
 update public.meal_templates
 set meal_slot = case

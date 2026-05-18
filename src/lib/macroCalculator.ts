@@ -1,8 +1,12 @@
 import type { Food, MacroTotals, SelectedFood } from "./types";
 
-export function calculateFoodMacros(food: Food, amount: number): MacroTotals {
+export function calculateFoodMacros(
+  food: Food,
+  amount: number,
+  amountMode: "serving" | "grams" = food.serving_mode === "grams" ? "grams" : "serving"
+): MacroTotals {
   const multiplier =
-    food.serving_mode === "grams"
+    amountMode === "grams"
       ? amount / Number(food.base_grams || 100)
       : amount;
 
@@ -18,7 +22,7 @@ export function calculateFoodMacros(food: Food, amount: number): MacroTotals {
 export function calculateDailyTotals(items: SelectedFood[]): MacroTotals {
   return items.reduce(
     (acc, item) => {
-      const macros = calculateFoodMacros(item.food, item.amount);
+      const macros = calculateFoodMacros(item.food, item.amount, item.amountMode);
 
       return {
         calories: acc.calories + macros.calories,

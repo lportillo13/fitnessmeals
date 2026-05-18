@@ -188,14 +188,20 @@ export default function CalculatorPage() {
   const selectedFoods = useMemo<SelectedFood[]>(
     () =>
       meals.filter((meal) => meal.completed).flatMap((meal) =>
-        meal.items
-          .map((item) => {
-        const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
-            return food
-              ? { food, amount: Number(item.amount), mealSlot: meal.meal_slot }
-              : null;
-          })
-          .filter((item): item is SelectedFood => item !== null)
+        meal.items.flatMap((item) => {
+          const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
+          return food
+            ? [
+                {
+                  food,
+                  amount: Number(item.amount),
+                  amountMode:
+                    item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving"),
+                  mealSlot: meal.meal_slot,
+                },
+              ]
+            : [];
+        })
       ),
     [meals, visibleFoods]
   );
@@ -378,12 +384,20 @@ export default function CalculatorPage() {
         meal.completed
     );
     const lockedFoods = lockedMeals.flatMap((meal) =>
-      meal.items
-        .map((item) => {
+      meal.items.flatMap((item) => {
           const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
-          return food ? { food, amount: Number(item.amount), mealSlot: meal.meal_slot } : null;
+          return food
+            ? [
+                {
+                  food,
+                  amount: Number(item.amount),
+                  amountMode:
+                    item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving"),
+                  mealSlot: meal.meal_slot,
+                },
+              ]
+            : [];
         })
-        .filter((item): item is SelectedFood => item !== null)
     );
     const consumed = calculateDailyTotals(lockedFoods);
     if (exceedsTargets(consumed, selectedProfile)) {
@@ -475,17 +489,13 @@ export default function CalculatorPage() {
       meal = { ...(createdMeal as DailyPlanMeal), items: [] };
     }
 
-    const normalizedAmount =
-      manualAmountMode === "serving" && manualFood?.serving_mode === "grams"
-        ? manualAmount * Number(manualFood.base_grams || 100)
-        : manualAmount;
-
     const { data } = await supabase
       .from("daily_plan_items")
       .insert({
         daily_plan_meal_id: meal.id,
         food_id: manualFoodId,
-        amount: normalizedAmount,
+        amount: manualAmount,
+        amount_mode: manualAmountMode,
       })
       .select("*")
       .single();
@@ -528,7 +538,13 @@ export default function CalculatorPage() {
         : currentFood.category === "carb"
           ? "carbs"
           : "fat";
-    const currentMacroAmount = calculateFoodMacros(currentFood, Number(item.amount))[macroKey];
+    const currentAmountMode =
+      item.amount_mode || (currentFood.serving_mode === "grams" ? "grams" : "serving");
+    const currentMacroAmount = calculateFoodMacros(
+      currentFood,
+      Number(item.amount),
+      currentAmountMode
+    )[macroKey];
     const replacementBaseAmount =
       replacementFood.serving_mode === "grams" ? Number(replacementFood.base_grams || 100) : 1;
     const replacementBaseMacro =
@@ -751,6 +767,8 @@ export default function CalculatorPage() {
                       {meal.items.map((item) => {
               const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
                         if (!food) return null;
+              const itemAmountMode =
+                item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving");
               const swapCandidates = visibleFoods.filter(
                           (candidate) =>
                             candidate.category === food.category &&
@@ -763,7 +781,7 @@ export default function CalculatorPage() {
                             <div>
       <div className="font-medium">{food.name}</div>
       <div className="muted text-sm">
-        {food.serving_mode === "grams"
+        {itemAmountMode === "grams"
           ? `${item.amount} g`
           : `${item.amount} × ${food.serving_label}`}
       </div>
@@ -785,7 +803,7 @@ export default function CalculatorPage() {
                                   ))}
                                 </select>
                               )}
-                              <input className="w-24 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" type="number" min="0" step={food.serving_mode === "grams" ? "5" : "0.25"} value={item.amount} onChange={(event) => updateItemAmount(item.id, Number(event.target.value))} />
+                              <input className="w-24 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" type="number" min="0" step={itemAmountMode === "grams" ? "5" : "0.25"} value={item.amount} onChange={(event) => updateItemAmount(item.id, Number(event.target.value))} />
                               <button onClick={() => removeItem(item.id)} className="rounded-xl bg-white/6 p-2"><Trash2 className="h-4 w-4" /></button>
                             </div>
                           </div>

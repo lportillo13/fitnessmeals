@@ -24,6 +24,7 @@ export type MealSlot = "breakfast" | "snack_1" | "lunch" | "snack_2" | "dinner";
 export type SelectedFood = {
   food: Food;
   amount: number;
+  amountMode?: "serving" | "grams";
   mealSlot: MealSlot;
 };
 
@@ -102,4 +103,5 @@ export type DailyPlanItem = {
   daily_plan_meal_id: string;
   food_id: string;
   amount: number;
+  amount_mode?: "serving" | "grams" | null;
 };
