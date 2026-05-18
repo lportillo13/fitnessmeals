@@ -288,7 +288,7 @@ export default function MealsPage() {
 
   return (
     <main className="app-shell">
-      <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(460px,520px)_1fr]">
+      <div className="mx-auto grid max-w-6xl gap-4">
         <section className="surface rounded-3xl p-5">
           <p className="eyebrow mb-2 text-xs font-semibold">Meal builder</p>
           <h1 className="mb-2 text-3xl font-bold">Create meal</h1>
