@@ -54,6 +54,13 @@ export default function CalculatorPage() {
   const [freeDay, setFreeDay] = useState(false);
   const [noRecalculate, setNoRecalculate] = useState(false);
   const [showManualAdd, setShowManualAdd] = useState(false);
+  const visibleFoods = useMemo(
+    () =>
+      foods.filter(
+        (food) => food.profile_id == null || !selectedProfileId || food.profile_id === selectedProfileId
+      ),
+    [foods, selectedProfileId]
+  );
 
   useEffect(() => {
     async function loadCoreData() {
@@ -174,25 +181,25 @@ export default function CalculatorPage() {
 
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
   const options = useMemo(
-    () => buildTemplateOptions(templates, templateItems, foods),
-    [templates, templateItems, foods]
+    () => buildTemplateOptions(templates, templateItems, visibleFoods),
+    [templates, templateItems, visibleFoods]
   );
   const selectedFoods = useMemo<SelectedFood[]>(
     () =>
       meals.filter((meal) => meal.completed).flatMap((meal) =>
         meal.items
           .map((item) => {
-            const food = foods.find((candidate) => candidate.id === item.food_id);
+        const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
             return food
               ? { food, amount: Number(item.amount), mealSlot: meal.meal_slot }
               : null;
           })
           .filter((item): item is SelectedFood => item !== null)
       ),
-    [meals, foods]
+    [meals, visibleFoods]
   );
   const totals = roundMacros(calculateDailyTotals(selectedFoods));
-  const matchingFoods = foods
+  const matchingFoods = visibleFoods
     .filter((food) =>
       `${food.name} ${food.brand || ""}`.toLowerCase().includes(foodSearch.toLowerCase())
     )
@@ -205,7 +212,7 @@ export default function CalculatorPage() {
 
   async function generatePlan() {
     if (!selectedProfile) return;
-    const chosen = chooseOptimizedDayPlan(selectedProfile, options, rules, foods);
+    const chosen = chooseOptimizedDayPlan(selectedProfile, options, rules, visibleFoods);
     if (chosen.some((entry) => !entry.selected)) {
       setMessage("Create at least one available saved meal for every meal slot first.");
       return;
@@ -370,7 +377,7 @@ export default function CalculatorPage() {
     const lockedFoods = lockedMeals.flatMap((meal) =>
       meal.items
         .map((item) => {
-          const food = foods.find((candidate) => candidate.id === item.food_id);
+          const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
           return food ? { food, amount: Number(item.amount), mealSlot: meal.meal_slot } : null;
         })
         .filter((item): item is SelectedFood => item !== null)
@@ -394,7 +401,7 @@ export default function CalculatorPage() {
       })),
       options,
       rules,
-      foods,
+      visibleFoods,
       consumed
     );
 
@@ -464,8 +471,8 @@ export default function CalculatorPage() {
 
   async function swapItemFood(item: DailyPlanItem, replacementFoodId: string) {
     const meal = meals.find((entry) => entry.items.some((candidate) => candidate.id === item.id));
-    const currentFood = foods.find((food) => food.id === item.food_id);
-    const replacementFood = foods.find((food) => food.id === replacementFoodId);
+    const currentFood = visibleFoods.find((food) => food.id === item.food_id);
+    const replacementFood = visibleFoods.find((food) => food.id === replacementFoodId);
     if (!meal || !currentFood || !replacementFood) return;
     if (!["carb", "protein", "fat"].includes(currentFood.category)) return;
 
@@ -670,9 +677,9 @@ export default function CalculatorPage() {
                   {openMealSlot === slot.key && meal?.items.length ? (
                     <div className="space-y-2">
                       {meal.items.map((item) => {
-                        const food = foods.find((candidate) => candidate.id === item.food_id);
+              const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
                         if (!food) return null;
-                        const swapCandidates = foods.filter(
+              const swapCandidates = visibleFoods.filter(
                           (candidate) =>
                             candidate.category === food.category &&
                             candidate.id !== food.id &&

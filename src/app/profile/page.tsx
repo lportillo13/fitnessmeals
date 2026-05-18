@@ -195,7 +195,12 @@ export default function ProfilePage() {
       }
 
       const [{ data: foodData }, { data: profileData }] = await Promise.all([
-        supabase.from("foods").select("*").eq("is_available", true).order("name"),
+        supabase
+          .from("foods")
+          .select("*")
+          .eq("is_available", true)
+          .or(`profile_id.eq.${form.id},profile_id.is.null`)
+          .order("name"),
         Promise.resolve({ data: updatedProfile }),
       ]);
       const foods = foodData || [];

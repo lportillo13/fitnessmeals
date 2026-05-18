@@ -2,6 +2,7 @@ create extension if not exists pgcrypto;
 
 alter table public.foods
   add column if not exists is_available boolean not null default true,
+  add column if not exists profile_id uuid references public.meal_profiles(id) on delete cascade,
   add column if not exists max_amount numeric,
   add column if not exists allowed_meal_slots text[] not null default array['breakfast','snack_1','lunch','snack_2','dinner'];
 

@@ -1,6 +1,7 @@
 export type Food = {
   id: string;
   user_id: string | null;
+  profile_id: string | null;
   name: string;
   brand: string | null;
   category: "protein" | "carb" | "fat" | "fruit" | "snack" | "drink" | "other";

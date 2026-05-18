@@ -100,8 +100,11 @@ export default function MealsPage() {
     loadTemplatesAndRules();
   }, [selectedProfileId]);
 
-  const selectedFood = foods.find((food) => food.id === selectedFoodId);
-  const matchingFoods = foods
+  const visibleFoods = foods.filter(
+    (food) => food.profile_id == null || !selectedProfileId || food.profile_id === selectedProfileId
+  );
+  const selectedFood = visibleFoods.find((food) => food.id === selectedFoodId);
+  const matchingFoods = visibleFoods
     .filter((food) => food.name.toLowerCase().includes(foodSearch.toLowerCase()))
     .slice(0, 8);
 
@@ -184,7 +187,7 @@ export default function MealsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           profile,
-          foods: foods.filter((food) => food.is_available !== false),
+          foods: visibleFoods.filter((food) => food.is_available !== false),
           rules,
           meal_slot: templateSlot,
           style: mealStyle,

@@ -7,14 +7,14 @@ import {
   Html5QrcodeSupportedFormats,
 } from "html5-qrcode";
 import { createClient } from "@/lib/supabase/client";
-import type { Food } from "@/lib/types";
+import type { Food, Profile } from "@/lib/types";
 
 type EditableFoodFields = Pick<
   Food,
   "calories" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g" | "max_amount" | "allowed_meal_slots" | "serving_mode" | "serving_label" | "base_grams"
 >;
 
-type FoodDraft = Omit<Food, "id" | "user_id" | "is_public">;
+type FoodDraft = Omit<Food, "id" | "user_id" | "profile_id" | "is_public">;
 
 type OpenFoodFactsProduct = {
   product_name?: string;
@@ -63,6 +63,8 @@ const fallbackDraft: FoodDraft = {
 
 export default function FoodsPage() {
   const [foods, setFoods] = useState<Food[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState("");
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [editingFoodId, setEditingFoodId] = useState<string | null>(null);
@@ -86,26 +88,44 @@ export default function FoodsPage() {
   const scannerElementId = "food-barcode-reader";
 
   useEffect(() => {
-    async function loadFoods() {
-      const { data, error } = await createClient()
-        .from("foods")
-        .select("*")
-        .order("category")
-        .order("name");
+    async function loadInitialData() {
+      const supabase = createClient();
+      const [{ data: profileData }, { data: foodData, error }] = await Promise.all([
+        supabase.from("meal_profiles").select("*").order("name"),
+        supabase.from("foods").select("*").order("category").order("name"),
+      ]);
 
       if (error) {
         setMessage(error.message);
       }
 
-      setFoods((data || []) as Food[]);
+      const loadedProfiles = (profileData || []) as Profile[];
+      setProfiles(loadedProfiles);
+      const rememberedProfileId = window.localStorage.getItem("selected-profile-id");
+      setSelectedProfileId(
+        loadedProfiles.find((profile) => profile.id === rememberedProfileId)?.id ||
+          loadedProfiles[0]?.id ||
+          ""
+      );
+      setFoods((foodData || []) as Food[]);
       setLoading(false);
     }
 
-    loadFoods();
+    void loadInitialData();
 
     return () => {
       void stopScanner();
     };
+  }, []);
+
+  useEffect(() => {
+    function syncSelectedProfile() {
+      const rememberedProfileId = window.localStorage.getItem("selected-profile-id");
+      if (rememberedProfileId) setSelectedProfileId(rememberedProfileId);
+    }
+
+    window.addEventListener("selected-profile-changed", syncSelectedProfile);
+    return () => window.removeEventListener("selected-profile-changed", syncSelectedProfile);
   }, []);
 
   function startEditing(food: Food) {
@@ -298,6 +318,7 @@ export default function FoodsPage() {
       .insert({
         ...draftFood,
         user_id: null,
+        profile_id: selectedProfileId || null,
         is_public: false,
       })
       .select("*")
@@ -315,6 +336,34 @@ export default function FoodsPage() {
     setBarcode("");
     setAddingFood(false);
     setMessage("Food added to the database.");
+  }
+
+  async function importFoodsFromProfile(sourceProfile: Profile) {
+    if (!selectedProfileId) {
+      setMessage("Choose a profile first.");
+      return;
+    }
+
+    const targetPrivateFoods = foods.filter((food) => food.profile_id === selectedProfileId);
+    const existingKeys = new Set(targetPrivateFoods.map(foodIdentityKey));
+    const rows = foods
+      .filter((food) => food.profile_id === sourceProfile.id)
+      .filter((food) => !existingKeys.has(foodIdentityKey(food)))
+      .map((food) => toImportedFoodRow(food, selectedProfileId));
+
+    if (rows.length === 0) {
+      setMessage(`No new foods to import from ${sourceProfile.name}.`);
+      return;
+    }
+
+    const { data, error } = await createClient().from("foods").insert(rows).select("*");
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setFoods((current) => [...current, ...((data || []) as Food[])]);
+    setMessage(`Imported ${rows.length} food${rows.length === 1 ? "" : "s"} from ${sourceProfile.name}.`);
   }
 
   function updateDraftUnitServing(grams: number, basis: ScannedUnitBasis) {
@@ -400,7 +449,17 @@ export default function FoodsPage() {
     return <main className="app-shell">Loading foods...</main>;
   }
 
-  const filteredFoods = foods.filter((food) =>
+  const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
+  const importSourceProfile = profiles.find(
+    (profile) =>
+      profile.id !== selectedProfileId &&
+      ((selectedProfile?.name.toLowerCase() === "jazmin" && profile.name.toLowerCase() === "leo") ||
+        (selectedProfile?.name.toLowerCase() === "leo" && profile.name.toLowerCase() === "jazmin"))
+  );
+  const visibleFoods = foods.filter(
+    (food) => food.profile_id == null || !selectedProfileId || food.profile_id === selectedProfileId
+  );
+  const filteredFoods = visibleFoods.filter((food) =>
     `${food.name} ${food.brand || ""} ${food.category}`
       .toLowerCase()
       .includes(search.toLowerCase())
@@ -423,6 +482,15 @@ export default function FoodsPage() {
             <Apple className="h-8 w-8 text-lime-300" />
             Food Database
           </h1>
+          {selectedProfile && importSourceProfile && (
+            <button
+              type="button"
+              onClick={() => importFoodsFromProfile(importSourceProfile)}
+              className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold"
+            >
+              Import foods from {importSourceProfile.name}
+            </button>
+          )}
         </div>
 
         <section className="surface rounded-3xl p-5">
@@ -820,5 +888,39 @@ function formatServingSummary(
 
 function roundToOneDecimal(value: number) {
   return Math.round(value * 10) / 10;
+}
+
+function foodIdentityKey(food: Pick<Food, "name" | "brand" | "serving_label" | "base_grams">) {
+  return [
+    food.name.trim().toLowerCase(),
+    food.brand?.trim().toLowerCase() || "",
+    food.serving_label.trim().toLowerCase(),
+    food.base_grams ?? "",
+  ].join("|");
+}
+
+function toImportedFoodRow(
+  food: Food,
+  profileId: string
+): FoodDraft & { user_id: null; profile_id: string; is_public: boolean } {
+  return {
+    name: food.name,
+    brand: food.brand,
+    category: food.category,
+    serving_mode: food.serving_mode,
+    serving_label: food.serving_label,
+    base_grams: food.base_grams,
+    calories: food.calories,
+    protein_g: food.protein_g,
+    carbs_g: food.carbs_g,
+    fat_g: food.fat_g,
+    fiber_g: food.fiber_g,
+    is_available: food.is_available,
+    max_amount: food.max_amount,
+    allowed_meal_slots: food.allowed_meal_slots,
+    user_id: null,
+    profile_id: profileId,
+    is_public: false,
+  };
 }
 
