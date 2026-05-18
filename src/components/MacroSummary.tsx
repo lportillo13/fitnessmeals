@@ -25,7 +25,7 @@ export default function MacroSummary({ totals, targets }: Props) {
   ];
 
   return (
-    <div className="surface rounded-3xl p-5">
+    <div className="surface w-full max-w-full overflow-hidden rounded-3xl p-5">
       <p className="eyebrow mb-2 text-xs font-semibold">Live dashboard</p>
       <h2 className="mb-5 text-2xl font-semibold">Daily Macros</h2>
 

@@ -546,8 +546,8 @@ export default function CalculatorPage() {
   return (
     <main className="app-shell">
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[1fr_380px]">
-        <section>
-          <div className="mb-4 lg:hidden">
+        <section className="min-w-0">
+          <div className="mb-4 min-w-0 max-w-full lg:hidden">
             <MacroSummary
               totals={totals}
               targets={{
