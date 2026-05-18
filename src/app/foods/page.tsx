@@ -80,6 +80,7 @@ export default function FoodsPage() {
   const [scannedUnitBasis, setScannedUnitBasis] = useState<ScannedUnitBasis | null>(null);
   const [addingFood, setAddingFood] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [showScannerModal, setShowScannerModal] = useState(false);
   const [scannerMessage, setScannerMessage] = useState("");
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     protein: true,
@@ -489,6 +490,7 @@ export default function FoodsPage() {
           setBarcode(detectedCode);
           setScannerMessage(`Scanned ${detectedCode}.`);
           void stopScanner();
+          setShowScannerModal(false);
           void lookupBarcode(detectedCode);
         },
         () => {
@@ -520,6 +522,18 @@ export default function FoodsPage() {
 
     scannerRef.current = null;
     setIsScanning(false);
+  }
+
+  function openScannerModal() {
+    setShowScannerModal(true);
+    window.setTimeout(() => {
+      void startScanner();
+    }, 0);
+  }
+
+  async function closeScannerModal() {
+    await stopScanner();
+    setShowScannerModal(false);
   }
 
   if (loading) {
@@ -593,11 +607,11 @@ export default function FoodsPage() {
             </button>
             <button
               type="button"
-              onClick={isScanning ? stopScanner : startScanner}
+              onClick={openScannerModal}
               className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
             >
-              {isScanning ? <X className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
-              {isScanning ? "Stop camera" : "Use camera"}
+              <Camera className="h-4 w-4" />
+              Use camera
             </button>
           </div>
 
@@ -634,12 +648,7 @@ export default function FoodsPage() {
             </div>
           )}
 
-          {scannerMessage && <p className="muted mt-3 text-sm">{scannerMessage}</p>}
-
-          <div
-            id={scannerElementId}
-            className={`${isScanning ? "mt-4" : ""} overflow-hidden rounded-2xl border border-white/10`}
-          />
+          {scannerMessage && !showScannerModal && <p className="muted mt-3 text-sm">{scannerMessage}</p>}
 
           {draftFood && (
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -958,6 +967,26 @@ export default function FoodsPage() {
             >
               <Save className="h-4 w-4" /> Save food
             </button>
+          </div>
+        </div>
+      )}
+      {showScannerModal && (
+        <div className="modal-overlay fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
+          <div className="modal-panel surface w-full max-w-xl rounded-3xl p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold">Scan barcode</h2>
+                <p className="muted mt-1 text-sm">Point the camera at the barcode.</p>
+              </div>
+              <button onClick={closeScannerModal} className="rounded-xl bg-white/6 p-2">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div
+              id={scannerElementId}
+              className="overflow-hidden rounded-2xl border border-white/10"
+            />
+            {scannerMessage && <p className="muted mt-3 text-sm">{scannerMessage}</p>}
           </div>
         </div>
       )}
