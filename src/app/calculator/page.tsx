@@ -379,8 +379,6 @@ export default function CalculatorPage() {
     );
     if (completed) {
       setMotivation({ message: instantMotivation("meal_completed"), tone: "positive" });
-      const nextMotivation = await fetchMotivation("meal_completed", selectedProfile?.name);
-      if (nextMotivation) setMotivation({ message: nextMotivation, tone: "positive" });
     }
   }
 
@@ -479,13 +477,8 @@ export default function CalculatorPage() {
         plannerSlots.every((slot) =>
           nextMeals.some((meal) => meal.meal_slot === slot.key && meal.completed)
         );
-      const motivation = await fetchMotivation(
-        allCompleted ? "day_completed" : "meal_completed",
-        selectedProfile?.name,
-        allCompleted ? { meals_completed: nextMeals.length } : undefined
-      );
       setMotivation({
-        message: motivation || instantMotivation(allCompleted ? "day_completed" : "meal_completed"),
+        message: instantMotivation(allCompleted ? "day_completed" : "meal_completed"),
         tone: "positive",
       });
     }

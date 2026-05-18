@@ -158,8 +158,6 @@ export default function FastingPage() {
     const completedCorrectly = Boolean(targetEnd && Date.now() >= targetEnd.getTime());
     if (completedCorrectly) {
       setMotivation(instantMotivation("fast_completed"));
-      const nextMotivation = await fetchMotivation("fast_completed", undefined, { target_hours: session.targetHours });
-      if (nextMotivation) setMotivation(nextMotivation);
     }
     setMessage("Fast ended.");
     await notify("Fast ended", "You ended your fast.");

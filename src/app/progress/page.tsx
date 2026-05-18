@@ -112,13 +112,17 @@ export default function ProgressPage() {
     const event = nextAnalysis.status === "on_track" ? "progress_on_track" : "progress_needs_attention";
     const tone: MotivationTone = nextAnalysis.status === "on_track" ? "positive" : "corrective";
     setMotivation({ message: instantMotivation(event), tone });
-    const motivation = await fetchMotivation(
-      event,
-      profile.name,
-      { weight_lb: weight, body_fat_percentage: bodyFat, status: nextAnalysis.status }
-    );
-    if (motivation) setMotivation({ message: motivation, tone });
-    setMessage(motivation || "Progress saved.");
+    if (event === "progress_needs_attention") {
+      const motivation = await fetchMotivation(
+        event,
+        profile.name,
+        { weight_lb: weight, body_fat_percentage: bodyFat, status: nextAnalysis.status }
+      );
+      if (motivation) setMotivation({ message: motivation, tone });
+      setMessage(motivation || "Progress saved.");
+      return;
+    }
+    setMessage("Progress saved.");
   }
 
   return (

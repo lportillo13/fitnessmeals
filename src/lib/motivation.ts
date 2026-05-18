@@ -25,6 +25,39 @@ export async function fetchMotivation(
   }
 }
 
+const positiveMotivations = [
+  "Nice work. One food closer.",
+  "That choice keeps the day moving in the right direction.",
+  "Clean execution. Keep stacking these.",
+  "Good call. Consistency is getting louder.",
+  "Another rep for your discipline.",
+  "That is how the plan becomes real.",
+  "Strong choice. Stay in rhythm.",
+  "Small win logged. Big result loading.",
+  "You kept the promise to yourself.",
+  "Momentum likes this version of you.",
+  "Good work. The curve bends one choice at a time.",
+  "That was a vote for the goal.",
+  "Solid. Keep the chain unbroken.",
+  "You are doing the quiet work that compounds.",
+  "Excellent. The boring wins are winning.",
+  "That meal moved you forward.",
+  "Right on plan. Keep the engine warm.",
+  "Another clean decision in the bank.",
+  "You are making the next choice easier.",
+  "Good discipline. Nothing flashy, just effective.",
+  "That is progress wearing ordinary clothes.",
+  "One more box checked. Keep going.",
+  "Sharp work. The day is taking shape.",
+  "You stayed aligned. That matters.",
+  "Good. The system is working because you are using it.",
+  "That choice belongs to the person you are becoming.",
+  "Steady hands. Strong outcome.",
+  "Nice. Keep feeding the streak.",
+  "You are building trust with yourself.",
+  "Another clean move. Stay with it.",
+];
+
 export function instantMotivation(
   event:
     | "meal_completed"
@@ -35,14 +68,18 @@ export function instantMotivation(
 ) {
   switch (event) {
     case "day_completed":
-      return "Day complete. That is a serious win.";
+      return randomPositiveMotivation();
     case "fast_completed":
-      return "Fast completed cleanly. Strong work.";
+      return randomPositiveMotivation();
     case "progress_on_track":
-      return "You are on track. Keep the rhythm.";
+      return randomPositiveMotivation();
     case "progress_needs_attention":
-      return "Small correction needed. Tighten the next few days.";
+      return "Generating recommendation...";
     default:
-      return "Nice work. One food closer.";
+      return randomPositiveMotivation();
   }
+}
+
+function randomPositiveMotivation() {
+  return positiveMotivations[Math.floor(Math.random() * positiveMotivations.length)];
 }
