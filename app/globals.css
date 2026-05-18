@@ -88,6 +88,13 @@ html[data-profile-theme="jaz"] {
   --line: rgba(255, 214, 235, 0.15);
 }
 
+html[data-profile-theme="jaz"] body {
+  background-image:
+    radial-gradient(circle at top left, rgba(244, 114, 182, 0.16), transparent 28%),
+    radial-gradient(circle at top right, rgba(192, 132, 252, 0.12), transparent 24%),
+    linear-gradient(180deg, #140914 0%, #1c0d1c 48%, #0b060d 100%);
+}
+
 html[data-profile-theme="jaz"] .bg-lime-300 {
   background-color: #f472b6 !important;
 }

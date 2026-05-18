@@ -16,6 +16,7 @@ const cards = [
 
 export default function HomePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const isJazmin = profile?.name.toLowerCase().includes("jaz");
 
   useEffect(() => {
     async function loadSelectedProfile() {
@@ -55,8 +56,12 @@ export default function HomePage() {
             <div className="space-y-4">
               <div className="overflow-hidden rounded-[1.75rem] border border-white/10">
                 <Image
-                  src="/capybara-hero.png"
-                  alt="Capybara with a meal bowl and dumbbell"
+                  src={isJazmin ? "/capybara-jazmin-hero.png" : "/capybara-hero.png"}
+                  alt={
+                    isJazmin
+                      ? "Lady capybara in fitness clothes with a healthy meal bowl and dumbbell"
+                      : "Capybara with a meal bowl and dumbbell"
+                  }
                   width={1536}
                   height={1024}
                   className="h-auto w-full"
