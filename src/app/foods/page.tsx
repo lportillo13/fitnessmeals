@@ -478,6 +478,14 @@ export default function FoodsPage() {
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteFood(food.id)}
+                          className="rounded-xl border border-white/10 p-2"
+                          aria-label={`Delete ${food.name}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
                   ))}
