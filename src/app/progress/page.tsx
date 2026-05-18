@@ -61,6 +61,7 @@ export default function ProgressPage() {
   const profile = profiles.find((item) => item.id === selectedProfileId);
   const latestLog = logs[0];
   const analysis = useMemo(() => analyzeProgress(profile, latestLog), [profile, latestLog]);
+  const timeline = useMemo(() => buildWeeklyTimeline(profile, logs), [profile, logs]);
 
   useEffect(() => {
     if (!profile) return;
@@ -190,6 +191,34 @@ export default function ProgressPage() {
             {logs.length === 0 && <p className="muted">No updates logged yet.</p>}
           </div>
         </section>
+
+        <section className="surface rounded-3xl p-5">
+          <h2 className="mb-4 text-2xl font-bold">Weekly target timeline</h2>
+          <div className="space-y-2">
+            {timeline.map((week) => (
+              <div
+                key={week.label}
+                className="surface-strong grid gap-2 rounded-2xl p-4 md:grid-cols-[120px_1fr_1fr_1fr]"
+              >
+                <div className="font-semibold">{week.label}</div>
+                <div>Target: {week.targetWeight.toFixed(1)} lb</div>
+                <div>{week.actualWeight != null ? `Actual: ${week.actualWeight.toFixed(1)} lb` : "No log yet"}</div>
+                <div className={week.status === "on_track" ? "text-lime-300" : week.status === "ahead" ? "text-cyan-300" : "text-rose-300"}>
+                  {week.status === "ahead"
+                    ? "Ahead"
+                    : week.status === "on_track"
+                      ? "On track"
+                      : week.status === "behind"
+                        ? "Behind"
+                        : "Pending"}
+                </div>
+              </div>
+            ))}
+            {timeline.length === 0 && (
+              <p className="muted">Generate a nutrition plan to create the weekly target timeline.</p>
+            )}
+          </div>
+        </section>
       </div>
       {motivation && (
         <MotivationModal
@@ -225,6 +254,42 @@ function analyzeProgress(profile?: Profile, latestLog?: ProgressLog) {
         ? "You are aligned with the timeline. Keep the current calorie target, meals, and activity steady."
         : "You are above the planned curve. Tighten meal adherence, review weekend drift, and consider more daily steps.",
   };
+}
+
+function buildWeeklyTimeline(profile?: Profile, logs: ProgressLog[] = []) {
+  if (!profile?.plan_start_date || !profile.plan_start_weight_lb) return [];
+  const startDate = new Date(profile.plan_start_date);
+  const goalDate = new Date(profile.goal_date);
+  const totalDays = Math.max(1, Math.ceil((goalDate.getTime() - startDate.getTime()) / 86400000));
+  const goalWeight = profile.plan_start_weight_lb - profile.goal_loss_lb;
+  const totalWeeks = Math.max(1, Math.ceil(totalDays / 7));
+
+  return Array.from({ length: totalWeeks }, (_, index) => {
+    const weekNumber = index + 1;
+    const weekEnd = new Date(startDate);
+    weekEnd.setDate(startDate.getDate() + weekNumber * 7);
+    if (weekEnd > goalDate) weekEnd.setTime(goalDate.getTime());
+    const elapsedDays = Math.min(
+      totalDays,
+      Math.max(0, Math.ceil((weekEnd.getTime() - startDate.getTime()) / 86400000))
+    );
+    const targetWeight =
+      profile.plan_start_weight_lb! -
+      ((profile.plan_start_weight_lb! - goalWeight) * elapsedDays) / totalDays;
+    const matchingLog = logs.find((log) => new Date(log.log_date) <= weekEnd);
+    const actualWeight = matchingLog?.weight_lb;
+    let status: "ahead" | "on_track" | "behind" | "pending" = "pending";
+    if (actualWeight != null) {
+      const difference = actualWeight - targetWeight;
+      status = difference < -1 ? "ahead" : difference <= 1 ? "on_track" : "behind";
+    }
+    return {
+      label: `Week ${weekNumber}`,
+      targetWeight,
+      actualWeight,
+      status,
+    };
+  });
 }
 
 function Field({

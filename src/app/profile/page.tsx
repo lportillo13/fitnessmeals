@@ -148,6 +148,8 @@ export default function ProfilePage() {
       plan_tdee: loadedProfile?.plan_tdee ?? recalculatedTargets.tdee,
       plan_daily_deficit:
         loadedProfile?.plan_daily_deficit ?? recalculatedTargets.requiredDailyDeficit,
+      plan_start_date: loadedProfile?.plan_start_date ?? null,
+      plan_start_weight_lb: loadedProfile?.plan_start_weight_lb ?? null,
       calorie_target: loadedProfile?.calorie_target ?? recalculatedTargets.calorieTarget,
       protein_target: loadedProfile?.protein_target ?? recalculatedTargets.proteinTarget,
       carbs_target: loadedProfile?.carbs_target ?? recalculatedTargets.carbsTarget,
@@ -200,6 +202,8 @@ export default function ProfilePage() {
         plan_bmr: recalculatedTargets.bmr,
         plan_tdee: recalculatedTargets.tdee,
         plan_daily_deficit: recalculatedTargets.requiredDailyDeficit,
+        plan_start_date: new Date().toLocaleDateString("en-CA"),
+        plan_start_weight_lb: form.weightLb,
         calorie_target: recalculatedTargets.calorieTarget,
         protein_target: recalculatedTargets.proteinTarget,
         carbs_target: recalculatedTargets.carbsTarget,

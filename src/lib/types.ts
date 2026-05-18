@@ -53,6 +53,8 @@ export type Profile = {
   plan_bmr: number | null;
   plan_tdee: number | null;
   plan_daily_deficit: number | null;
+  plan_start_date: string | null;
+  plan_start_weight_lb: number | null;
   calorie_target: number;
   protein_target: number;
   carbs_target: number;

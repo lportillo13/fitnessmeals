@@ -21,7 +21,9 @@ alter table public.meal_profiles
   add column if not exists goal_body_fat_percentage numeric,
   add column if not exists plan_bmr numeric,
   add column if not exists plan_tdee numeric,
-  add column if not exists plan_daily_deficit numeric;
+  add column if not exists plan_daily_deficit numeric,
+  add column if not exists plan_start_date date,
+  add column if not exists plan_start_weight_lb numeric;
 
 create table if not exists public.meal_rules (
   id uuid primary key default gen_random_uuid(),
