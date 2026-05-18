@@ -83,6 +83,9 @@ html[data-profile-theme="jaz"] {
   --neon: #f472b6;
   --neon-rgb: 244, 114, 182;
   --neon-alt: #c084fc;
+  --panel: #472644e6;
+  --panel-strong: rgba(83, 42, 80, 0.96);
+  --line: rgba(255, 214, 235, 0.15);
 }
 
 html[data-profile-theme="jaz"] .bg-lime-300 {
