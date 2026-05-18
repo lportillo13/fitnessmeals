@@ -639,21 +639,26 @@ export default function CalculatorPage() {
               const slotOptions = getSlotOptions(options, slot.key, rules);
               return (
                 <div key={slot.key} className="surface rounded-3xl p-5">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-3">
                     <button
                       type="button"
                       onClick={() => setOpenMealSlot(slot.key)}
-                      className="text-left"
+                      className="min-w-0 text-left"
                     >
                       <h2 className="text-xl font-semibold">{slot.label}</h2>
-                      <p className="muted text-sm">{meal?.meal_name || "No meal selected yet."}</p>
+                      <p className="muted max-w-full break-words text-sm">{meal?.meal_name || "No meal selected yet."}</p>
                     </button>
                     {meal && (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex min-w-0 w-full flex-wrap gap-2 md:w-auto">
                         <button onClick={() => shuffleMeal(slot.key)} className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm"><Shuffle className="h-4 w-4" />Random swap</button>
-                        <select className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" value={meal.meal_template_id || ""} onChange={(event) => { const option = slotOptions.find((candidate) => candidate.template.id === event.target.value); if (option) void replaceMealAndRebalance(slot.key, option); }}>
-                          {slotOptions.map((option) => <option key={option.template.id} value={option.template.id}>{option.template.name}</option>)}
-                        </select>
+                        <MealOptionSelect
+                          value={meal.meal_template_id || ""}
+                          options={slotOptions}
+                          onChange={(value) => {
+                            const option = slotOptions.find((candidate) => candidate.template.id === value);
+                            if (option) void replaceMealAndRebalance(slot.key, option);
+                          }}
+                        />
                         <label className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm">
                           <input type="checkbox" checked={meal.completed} onChange={(event) => toggleCompleted(meal.id, event.target.checked)} />
                           <CheckCircle2 className="h-4 w-4" />Completed
@@ -739,5 +744,38 @@ function exceedsTargets(totals: ReturnType<typeof calculateDailyTotals>, profile
     totals.protein > profile.protein_target ||
     totals.carbs > profile.carbs_target ||
     totals.fat > profile.fat_target
+  );
+}
+
+function MealOptionSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: TemplateOption[];
+  onChange: (value: string) => void;
+}) {
+  const selected = options.find((option) => option.template.id === value);
+
+  return (
+    <label className="relative block min-w-0 w-full md:w-auto md:min-w-64">
+      <span className="pointer-events-none flex min-h-11 items-center rounded-xl border border-white/10 bg-white/5 px-3 py-2 pr-9 text-sm text-white">
+        <span className="line-clamp-2 break-words">{selected?.template.name || "Choose meal"}</span>
+      </span>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+      <select
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label="Choose meal"
+      >
+        {options.map((option) => (
+          <option key={option.template.id} value={option.template.id}>
+            {option.template.name}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

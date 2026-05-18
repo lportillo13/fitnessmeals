@@ -16,6 +16,7 @@ type ProfileForm = {
   trainingDaysPerWeek: number;
   stepsPerDay: number;
   goalLossLb: number;
+  goalBodyFatPercentage: number;
   goalDate: string;
   goalInstruction: string;
 };
@@ -29,6 +30,7 @@ const defaultForm: ProfileForm = {
   trainingDaysPerWeek: 4,
   stepsPerDay: 5000,
   goalLossLb: 15,
+  goalBodyFatPercentage: 20,
   goalDate: "2026-08-01",
   goalInstruction: "",
 };
@@ -101,6 +103,7 @@ export default function ProfilePage() {
       trainingDaysPerWeek: profile.training_days_per_week,
       stepsPerDay: profile.steps_per_day,
       goalLossLb: profile.goal_loss_lb,
+      goalBodyFatPercentage: profile.goal_body_fat_percentage || 0,
       goalDate: profile.goal_date,
       goalInstruction: profile.goal_instruction || "",
     });
@@ -123,6 +126,7 @@ export default function ProfilePage() {
       training_days_per_week: form.trainingDaysPerWeek,
       steps_per_day: form.stepsPerDay,
       goal_loss_lb: form.goalLossLb,
+      goal_body_fat_percentage: form.goalBodyFatPercentage || null,
       goal_date: form.goalDate,
       goal_instruction: form.goalInstruction,
       calorie_target: result.calorieTarget,
@@ -329,6 +333,7 @@ export default function ProfilePage() {
             <Input label="Training days/week" value={form.trainingDaysPerWeek} onChange={(v) => updateField("trainingDaysPerWeek", v)} />
             <Input label="Steps/day" value={form.stepsPerDay} onChange={(v) => updateField("stepsPerDay", v)} />
             <Input label="Goal loss lb" value={form.goalLossLb} onChange={(v) => updateField("goalLossLb", v)} />
+            <Input label="Goal body fat %" value={form.goalBodyFatPercentage} onChange={(v) => updateField("goalBodyFatPercentage", v)} />
             <label className="block">
               <span className="text-sm font-medium">Goal date</span>
               <input

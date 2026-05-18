@@ -10,6 +10,7 @@ const requestSchema = z.object({
     training_days_per_week: z.number(),
     steps_per_day: z.number(),
     goal_loss_lb: z.number(),
+    goal_body_fat_percentage: z.number().nullable().optional(),
     goal_date: z.string(),
     calorie_target: z.number(),
     protein_target: z.number(),

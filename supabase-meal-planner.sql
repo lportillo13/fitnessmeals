@@ -11,7 +11,8 @@ alter table public.meal_templates
   add column if not exists is_default_daily boolean not null default false;
 
 alter table public.meal_profiles
-  add column if not exists goal_instruction text;
+  add column if not exists goal_instruction text,
+  add column if not exists goal_body_fat_percentage numeric;
 
 create table if not exists public.meal_rules (
   id uuid primary key default gen_random_uuid(),
