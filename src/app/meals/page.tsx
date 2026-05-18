@@ -275,7 +275,11 @@ export default function MealsPage() {
   const visibleTemplates = templates.filter((template) => {
     const matchesSlot = mealSlotFilter === "all" || template.meal_slot === mealSlotFilter;
     const matchesSearch = template.name.toLowerCase().includes(mealSearch.toLowerCase());
-    return matchesSlot && matchesSearch;
+    const items = templateItems.filter((item) => item.meal_template_id === template.id);
+    const usesOnlyAvailableFoods = items.every((item) =>
+      visibleFoods.some((food) => food.id === item.food_id && food.is_available !== false)
+    );
+    return matchesSlot && matchesSearch && usesOnlyAvailableFoods;
   });
 
   return (
