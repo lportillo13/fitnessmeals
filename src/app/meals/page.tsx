@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp, Plus, Save, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Food, MealRule, MealSlot, MealTemplate, MealTemplateItem, Profile } from "@/lib/types";
-import { jazminMealTemplates, jazminPlanFoods } from "@/lib/jazminPlan";
 
 type DraftItem = {
   foodId: string;
@@ -24,7 +23,6 @@ export default function MealsPage() {
   const [selectedFoodId, setSelectedFoodId] = useState("");
   const [amount, setAmount] = useState(1);
   const [message, setMessage] = useState("");
-  const [isImporting, setIsImporting] = useState(false);
   const [rules, setRules] = useState<MealRule[]>([]);
   const [mealStyle, setMealStyle] = useState("");
   const [isGeneratingAiMeal, setIsGeneratingAiMeal] = useState(false);
@@ -261,152 +259,6 @@ export default function MealsPage() {
     );
   }
 
-  async function importJazminPlan() {
-    if (!selectedProfileId) {
-      setMessage("Choose Jazmin's profile first.");
-      return;
-    }
-
-    setIsImporting(true);
-    setMessage("");
-    const supabase = createClient();
-    const { data: existingFoods } = await supabase
-      .from("foods")
-      .select("*")
-      .in(
-        "name",
-        jazminPlanFoods.map((food) => food.name)
-      );
-
-    const existingFoodNames = new Set((existingFoods || []).map((food) => food.name));
-    const foodsToInsert = jazminPlanFoods
-      .filter((food) => !existingFoodNames.has(food.name))
-      .map((food) => ({
-        ...food,
-        user_id: null,
-        is_public: true,
-        is_available: true,
-      }));
-
-    if (foodsToInsert.length > 0) {
-      const { error } = await supabase.from("foods").insert(foodsToInsert);
-      if (error) {
-        setMessage(error.message);
-        setIsImporting(false);
-        return;
-      }
-    }
-
-    const { data: refreshedFoods } = await supabase
-      .from("foods")
-      .select("*")
-      .in(
-        "name",
-        jazminPlanFoods.map((food) => food.name)
-      );
-    const foodByName = new Map((refreshedFoods || []).map((food) => [food.name, food]));
-
-    for (const template of jazminMealTemplates) {
-      const descriptiveName = getDescriptiveTemplateName(template.name, template.items);
-      const { data: existingTemplate } = await supabase
-        .from("meal_templates")
-        .select("id")
-        .eq("profile_id", selectedProfileId)
-        .eq("name", descriptiveName)
-        .maybeSingle();
-      if (existingTemplate) continue;
-
-      const mealSlot = template.name.includes("Breakfast")
-        ? "breakfast"
-        : template.name.includes("Snack 2")
-          ? "snack_2"
-          : template.name.includes("Snack")
-            ? "snack_1"
-            : template.name.includes("Lunch")
-              ? "lunch"
-              : "dinner";
-
-      const { data: createdTemplate, error: templateError } = await supabase
-        .from("meal_templates")
-        .insert({ profile_id: selectedProfileId, name: descriptiveName, meal_slot: mealSlot })
-        .select()
-        .single();
-
-      if (templateError) {
-        setMessage(templateError.message);
-        setIsImporting(false);
-        return;
-      }
-
-      const rows = template.items.map(([foodName, itemAmount]) => ({
-        meal_template_id: createdTemplate.id,
-        food_id: foodByName.get(foodName)?.id,
-        amount: itemAmount,
-      }));
-      await supabase.from("meal_template_items").insert(rows);
-    }
-
-    const { data } = await supabase
-      .from("meal_templates")
-      .select("*")
-      .eq("profile_id", selectedProfileId)
-      .order("name");
-    setTemplates((data || []) as MealTemplate[]);
-    const { data: refreshedItems } = await supabase.from("meal_template_items").select("*");
-    setTemplateItems((refreshedItems || []) as MealTemplateItem[]);
-    const shake = foodByName.get("Protein shake + creatine");
-    if (shake) {
-      const defaultRules: Omit<MealRule, "id" | "is_active">[] = [
-        {
-          profile_id: selectedProfileId,
-          name: "Lunch protein at least 125 g",
-          meal_slot: "lunch",
-          rule_type: "minimum_category_amount",
-          required_food_id: null,
-          target_category: "protein",
-          amount: 125,
-        },
-        {
-          profile_id: selectedProfileId,
-          name: "Dinner protein at least 125 g",
-          meal_slot: "dinner",
-          rule_type: "minimum_category_amount",
-          required_food_id: null,
-          target_category: "protein",
-          amount: 125,
-        },
-        {
-          profile_id: selectedProfileId,
-          name: "Protein shake exactly one scoop",
-          meal_slot: "snack_1",
-          rule_type: "exact_food_amount",
-          required_food_id: shake.id,
-          target_category: null,
-          amount: 1,
-        },
-      ];
-      for (const rule of defaultRules) {
-        const { data: existingRule } = await supabase
-          .from("meal_rules")
-          .select("id")
-          .eq("profile_id", selectedProfileId)
-          .eq("name", rule.name)
-          .maybeSingle();
-        if (!existingRule) {
-          await supabase.from("meal_rules").insert(rule);
-        }
-      }
-      const { data: refreshedRules } = await supabase
-        .from("meal_rules")
-        .select("*")
-        .eq("profile_id", selectedProfileId)
-        .order("created_at");
-      setRules((refreshedRules || []) as MealRule[]);
-    }
-    setMessage("Jazmin's monthly plan was imported as saved meals.");
-    setIsImporting(false);
-  }
-
   const visibleTemplates = templates.filter((template) => {
     const matchesSlot = mealSlotFilter === "all" || template.meal_slot === mealSlotFilter;
     const matchesSearch = template.name.toLowerCase().includes(mealSearch.toLowerCase());
@@ -517,7 +369,6 @@ export default function MealsPage() {
           </div>
 
           <button onClick={saveTemplate} className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black"><Save className="h-4 w-4" />Save Meal</button>
-          <button onClick={importJazminPlan} disabled={isImporting} className="ml-3 mt-4 inline-flex items-center gap-2 rounded-2xl bg-white/8 px-5 py-3 font-semibold disabled:opacity-60">{isImporting ? "Importing..." : "Import Jazmin Plan"}</button>
           {message && <p className="muted mt-3 text-sm">{message}</p>}
         </section>
 
@@ -644,32 +495,6 @@ function CountPill({ label, value }: { label: string; value: number }) {
 function formatSlot(slot: MealSlot | null) {
   if (!slot) return "Unassigned";
   return slot.replace("_", " ");
-}
-
-function getDescriptiveTemplateName(
-  originalName: string,
-  items: readonly (readonly [string, number])[]
-) {
-  if (originalName.includes("Breakfast")) {
-    return items.some(([food]) => food.includes("Hard-boiled egg"))
-      ? "Egg breakfast with cottage cheese"
-      : "Egg whites breakfast with cottage cheese";
-  }
-
-  if (originalName.includes("Snack")) {
-    return items.map(([food]) => food.replace("Protein shake + creatine", "Protein shake")).join(" + ");
-  }
-
-  const mainFoods = items
-    .map(([food]) => food)
-    .filter(
-      (food) =>
-        !["Vegetables", "Olive oil", "Avocado", "Feta"].includes(food)
-    )
-    .slice(0, 2)
-    .map((food) => food.replace(" cooked", ""));
-
-  return mainFoods.join(" + ");
 }
 
 function GenerationModal({
