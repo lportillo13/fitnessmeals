@@ -35,6 +35,15 @@ type OpenFoodFactsProduct = {
   };
 };
 
+type ScannedUnitBasis = {
+  grams: number;
+  caloriesPer100g: number;
+  proteinPer100g: number;
+  carbsPer100g: number;
+  fatPer100g: number;
+  fiberPer100g: number;
+};
+
 const fallbackDraft: FoodDraft = {
   name: "",
   brand: null,
@@ -63,6 +72,7 @@ export default function FoodsPage() {
   const [barcode, setBarcode] = useState("");
   const [lookupLoading, setLookupLoading] = useState(false);
   const [draftFood, setDraftFood] = useState<FoodDraft | null>(null);
+  const [scannedUnitBasis, setScannedUnitBasis] = useState<ScannedUnitBasis | null>(null);
   const [addingFood, setAddingFood] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scannerMessage, setScannerMessage] = useState("");
@@ -186,6 +196,7 @@ export default function FoodsPage() {
     setLookupLoading(true);
     setMessage("");
     setDraftFood(null);
+    setScannedUnitBasis(null);
 
     try {
       const response = await fetch(
@@ -202,17 +213,50 @@ export default function FoodsPage() {
       }
 
       const product = result.product;
-      const servingQuantity = Number(product.serving_quantity || 100);
+      const servingQuantity =
+        Number(product.serving_quantity) ||
+        parseServingGrams(product.serving_size) ||
+        100;
       const hasServingMacros = product.nutriments?.["energy-kcal_serving"] != null;
       const servingLabel = product.serving_size || (hasServingMacros ? "1 serving" : "100 g");
+      const unitBasis = hasServingMacros
+        ? {
+            grams: servingQuantity,
+            caloriesPer100g: per100gValue(
+              product.nutriments?.["energy-kcal_100g"],
+              product.nutriments?.["energy-kcal_serving"],
+              servingQuantity
+            ),
+            proteinPer100g: per100gValue(
+              product.nutriments?.proteins_100g,
+              product.nutriments?.proteins_serving,
+              servingQuantity
+            ),
+            carbsPer100g: per100gValue(
+              product.nutriments?.carbohydrates_100g,
+              product.nutriments?.carbohydrates_serving,
+              servingQuantity
+            ),
+            fatPer100g: per100gValue(
+              product.nutriments?.fat_100g,
+              product.nutriments?.fat_serving,
+              servingQuantity
+            ),
+            fiberPer100g: per100gValue(
+              product.nutriments?.fiber_100g,
+              product.nutriments?.fiber_serving,
+              servingQuantity
+            ),
+          }
+        : null;
 
       setDraftFood({
         ...fallbackDraft,
         name: product.product_name || "Unnamed scanned food",
         brand: product.brands || null,
         serving_mode: hasServingMacros ? "unit" : "grams",
-        serving_label: servingLabel,
-        base_grams: hasServingMacros ? null : servingQuantity || 100,
+        serving_label: hasServingMacros ? "1 serving" : servingLabel,
+        base_grams: servingQuantity || 100,
         calories: numberOrZero(
           hasServingMacros
             ? product.nutriments?.["energy-kcal_serving"]
@@ -235,6 +279,7 @@ export default function FoodsPage() {
           hasServingMacros ? product.nutriments?.fiber_serving : product.nutriments?.fiber_100g
         ),
       });
+      setScannedUnitBasis(unitBasis);
     } catch {
       setMessage("Could not look up that barcode right now.");
     } finally {
@@ -266,9 +311,28 @@ export default function FoodsPage() {
 
     setFoods((current) => [...current, data as Food]);
     setDraftFood(null);
+    setScannedUnitBasis(null);
     setBarcode("");
     setAddingFood(false);
     setMessage("Food added to the database.");
+  }
+
+  function updateDraftUnitServing(grams: number, basis: ScannedUnitBasis) {
+    if (!Number.isFinite(grams) || grams <= 0) return;
+
+    setDraftFood((current) =>
+      current
+        ? {
+            ...current,
+            base_grams: grams,
+            calories: scalePer100g(basis.caloriesPer100g, grams),
+            protein_g: scalePer100g(basis.proteinPer100g, grams),
+            carbs_g: scalePer100g(basis.carbsPer100g, grams),
+            fat_g: scalePer100g(basis.fatPer100g, grams),
+            fiber_g: scalePer100g(basis.fiberPer100g, grams),
+          }
+        : current
+    );
   }
 
   async function startScanner() {
@@ -405,7 +469,7 @@ export default function FoodsPage() {
                 <div>
                   <h3 className="font-semibold">{draftFood.name}</h3>
                   <p className="muted text-sm">
-                    {draftFood.brand || "Unknown brand"} · {draftFood.serving_label}
+                    {draftFood.brand || "Unknown brand"} · {formatServingSummary(draftFood)}
                   </p>
                   <p className="mt-2 text-sm">
                     {draftFood.calories} cal · {draftFood.protein_g}g protein · {draftFood.carbs_g}g
@@ -422,6 +486,35 @@ export default function FoodsPage() {
                   {addingFood ? "Adding..." : "Add food"}
                 </button>
               </div>
+              {draftFood.serving_mode === "unit" && scannedUnitBasis && (
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <label className="block">
+                    <span className="text-sm font-medium">Personal serving</span>
+                    <input
+                      className="mt-1 w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                      value={draftFood.serving_label}
+                      onChange={(event) =>
+                        setDraftFood((current) =>
+                          current ? { ...current, serving_label: event.target.value } : current
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium">Grams per serving</span>
+                    <input
+                      className="mt-1 w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={draftFood.base_grams ?? scannedUnitBasis.grams}
+                      onChange={(event) =>
+                        updateDraftUnitServing(Number(event.target.value), scannedUnitBasis)
+                      }
+                    />
+                  </label>
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -696,3 +789,36 @@ function formatAllowedSlots(slots: Food["allowed_meal_slots"]) {
 function numberOrZero(value: number | undefined) {
   return Number.isFinite(value) ? Number(value) : 0;
 }
+
+function per100gValue(
+  valuePer100g: number | undefined,
+  valuePerServing: number | undefined,
+  servingGrams: number
+) {
+  if (Number.isFinite(valuePer100g)) return Number(valuePer100g);
+  if (!Number.isFinite(valuePerServing) || !servingGrams) return 0;
+  return (Number(valuePerServing) / servingGrams) * 100;
+}
+
+function scalePer100g(valuePer100g: number, grams: number) {
+  return roundToOneDecimal((valuePer100g * grams) / 100);
+}
+
+function parseServingGrams(servingSize?: string) {
+  const match = servingSize?.match(/(\d+(?:\.\d+)?)\s*g\b/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function formatServingSummary(
+  food: Pick<FoodDraft, "serving_mode" | "serving_label" | "base_grams">
+) {
+  if (food.serving_mode === "unit" && food.base_grams) {
+    return `${food.serving_label} (${food.base_grams} g)`;
+  }
+  return food.serving_label;
+}
+
+function roundToOneDecimal(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
