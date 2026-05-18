@@ -310,8 +310,8 @@ export default function MealsPage() {
           </div>
 
           <div className="rounded-3xl bg-white/[0.03] p-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white sm:col-span-2" placeholder="Meal name" value={templateName} onChange={(event) => setTemplateName(event.target.value)} />
+            <div className="grid grid-cols-2 gap-3">
+              <input className="col-span-2 rounded-2xl border border-white/10 bg-white/5 p-3 text-white" placeholder="Meal name" value={templateName} onChange={(event) => setTemplateName(event.target.value)} />
               <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={templateSlot} onChange={(event) => setTemplateSlot(event.target.value as MealSlot)}>
                 <option value="breakfast">Breakfast</option>
                 <option value="snack_1">Snack 1</option>
@@ -346,9 +346,9 @@ export default function MealsPage() {
           {creationMode === "manual" && (
           <div className="mt-4 rounded-3xl bg-white/[0.03] p-4">
             <p className="mb-3 text-sm font-semibold text-slate-200">Add foods</p>
-            <div className="grid gap-3 sm:grid-cols-[1fr_120px] lg:grid-cols-[1fr_120px_120px_auto]">
-            <div className="relative">
-              <input className="w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white" placeholder="Search food" value={foodSearch} onChange={(event) => { setFoodSearch(event.target.value); setSelectedFoodId(""); }} />
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-[1fr_120px_120px_auto]">
+            <div className="relative col-span-2 lg:col-span-1">
+              <input className="w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white lg:min-w-0" placeholder="Search food" value={foodSearch} onChange={(event) => { setFoodSearch(event.target.value); setSelectedFoodId(""); }} />
               {foodSearch && !selectedFood && matchingFoods.length > 0 && (
                 <div className="surface absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-2xl">
                   {matchingFoods.map((food) => (
@@ -373,7 +373,7 @@ export default function MealsPage() {
               <option value="serving">Serving</option>
               <option value="grams" disabled={!canUseGrams}>Grams</option>
             </select>
-            <button onClick={addDraftItem} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold"><Plus className="h-4 w-4" />Add</button>
+            <button onClick={addDraftItem} className="col-span-2 inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold lg:col-span-1"><Plus className="h-4 w-4" />Add</button>
             </div>
           </div>
           )}
