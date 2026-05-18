@@ -50,6 +50,7 @@ export default function CalculatorPage() {
   const [manualFoodId, setManualFoodId] = useState("");
   const [manualMealSlot, setManualMealSlot] = useState<MealSlot>("breakfast");
   const [manualAmount, setManualAmount] = useState(1);
+  const [manualAmountMode, setManualAmountMode] = useState<"serving" | "grams">("serving");
   const [openMealSlot, setOpenMealSlot] = useState<MealSlot>("breakfast");
   const [freeDay, setFreeDay] = useState(false);
   const [noRecalculate, setNoRecalculate] = useState(false);
@@ -204,6 +205,8 @@ export default function CalculatorPage() {
       `${food.name} ${food.brand || ""}`.toLowerCase().includes(foodSearch.toLowerCase())
     )
     .slice(0, 8);
+  const manualFood = visibleFoods.find((food) => food.id === manualFoodId);
+  const canUseManualGrams = Boolean(manualFood?.base_grams);
 
   useEffect(() => {
     if (!selectedProfile || !checkedTodayPlan || plan || options.length === 0) return;
@@ -435,25 +438,68 @@ export default function CalculatorPage() {
   }
 
   async function addManualFood() {
-    const meal = meals.find((candidate) => candidate.meal_slot === manualMealSlot);
-    if (!meal || !manualFoodId) return;
-    const { data } = await createClient()
+    if (!manualFoodId || !selectedProfile) return;
+    const supabase = createClient();
+    let activePlan = plan;
+    if (!activePlan) {
+      const { data: createdPlan, error } = await supabase
+        .from("daily_plans")
+        .insert({ profile_id: selectedProfile.id, plan_date: getTodayKey() })
+        .select("*")
+        .single();
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+      activePlan = createdPlan as DailyPlan;
+      setPlan(activePlan);
+    }
+
+    let meal = meals.find((candidate) => candidate.meal_slot === manualMealSlot);
+    if (!meal) {
+      const { data: createdMeal, error } = await supabase
+        .from("daily_plan_meals")
+        .insert({
+          daily_plan_id: activePlan.id,
+          meal_slot: manualMealSlot,
+          meal_template_id: null,
+          meal_name: "Manual meal",
+          completed: true,
+        })
+        .select("*")
+        .single();
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+      meal = { ...(createdMeal as DailyPlanMeal), items: [] };
+    }
+
+    const normalizedAmount =
+      manualAmountMode === "serving" && manualFood?.serving_mode === "grams"
+        ? manualAmount * Number(manualFood.base_grams || 100)
+        : manualAmount;
+
+    const { data } = await supabase
       .from("daily_plan_items")
       .insert({
         daily_plan_meal_id: meal.id,
         food_id: manualFoodId,
-        amount: manualAmount,
+        amount: normalizedAmount,
       })
       .select("*")
       .single();
-    const nextMeals = meals.map((entry) =>
-        entry.id === meal.id ? { ...entry, items: [...entry.items, data as DailyPlanItem] } : entry
-    );
+    const hasExistingMeal = meals.some((entry) => entry.id === meal.id);
+    const nextMeals = hasExistingMeal
+      ? meals.map((entry) =>
+          entry.id === meal.id ? { ...entry, items: [...entry.items, data as DailyPlanItem] } : entry
+        )
+      : [...meals, { ...meal, items: [data as DailyPlanItem] }];
     setMeals(nextMeals);
     setFoodSearch("");
     setManualFoodId("");
     if (!freeDay && !noRecalculate) {
-      const changedIndex = plannerSlots.findIndex((slot) => slot.key === meal.meal_slot);
+      const changedIndex = plannerSlots.findIndex((slot) => slot.key === meal!.meal_slot);
       await rebalanceFutureMeals(nextMeals, changedIndex);
     }
   }
@@ -618,7 +664,7 @@ export default function CalculatorPage() {
               {showManualAdd ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
             </button>
             {showManualAdd && (
-            <div className="mt-4 grid gap-3 md:grid-cols-[160px_1fr_120px_auto]">
+            <div className="mt-4 grid gap-3 md:grid-cols-[160px_1fr_120px_120px_auto]">
               <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={manualMealSlot} onChange={(event) => setManualMealSlot(event.target.value as MealSlot)}>
                 {plannerSlots.map((slot) => <option key={slot.key} value={slot.key}>{slot.label}</option>)}
               </select>
@@ -627,14 +673,40 @@ export default function CalculatorPage() {
                 {foodSearch && !manualFoodId && matchingFoods.length > 0 && (
                   <div className="surface absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-2xl">
                     {matchingFoods.map((food) => (
-                      <button key={food.id} onClick={() => { setManualFoodId(food.id); setFoodSearch(food.name); setManualAmount(food.serving_mode === "grams" ? Number(food.base_grams || 100) : 1); }} className="flex w-full justify-between px-4 py-3 text-left text-sm hover:bg-white/8">
+                      <button key={food.id} onClick={() => { setManualFoodId(food.id); setFoodSearch(food.name); setManualAmountMode(food.serving_mode === "grams" ? "grams" : "serving"); setManualAmount(food.serving_mode === "grams" ? Number(food.base_grams || 100) : 1); }} className="flex w-full justify-between px-4 py-3 text-left text-sm hover:bg-white/8">
                         <span>{food.name}</span><span className="muted">{food.serving_label}</span>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
-              <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" value={manualAmount} onChange={(event) => setManualAmount(Number(event.target.value))} />
+              <div className="grid gap-2 sm:grid-cols-[1fr_120px] md:contents">
+                <input
+                  className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                  type="number"
+                  min="0"
+                  step={manualAmountMode === "grams" ? "5" : "0.25"}
+                  value={manualAmount}
+                  onChange={(event) => setManualAmount(Number(event.target.value))}
+                />
+                <select
+                  className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                  value={manualAmountMode}
+                  onChange={(event) => {
+                    const nextMode = event.target.value as "serving" | "grams";
+                    setManualAmountMode(nextMode);
+                    if (!manualFood) return;
+                    setManualAmount(
+                      nextMode === "grams"
+                        ? Number(manualFood.base_grams || 1)
+                        : 1
+                    );
+                  }}
+                >
+                  <option value="serving">Serving</option>
+                  <option value="grams" disabled={!canUseManualGrams}>Grams</option>
+                </select>
+              </div>
               <button onClick={addManualFood} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold"><Plus className="h-4 w-4" />Add</button>
             </div>
             )}
@@ -721,7 +793,7 @@ export default function CalculatorPage() {
                       })}
                     </div>
                   ) : openMealSlot === slot.key ? (
-                    <p className="muted text-sm">Generate a plan to fill this meal.</p>
+                    <p className="muted text-sm">No foods added yet.</p>
                   ) : null}
                 </div>
               );
