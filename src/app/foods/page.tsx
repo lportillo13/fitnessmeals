@@ -72,7 +72,10 @@ export default function FoodsPage() {
   const [savingFoodId, setSavingFoodId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [barcode, setBarcode] = useState("");
+  const [productSearch, setProductSearch] = useState("");
   const [lookupLoading, setLookupLoading] = useState(false);
+  const [productSearchLoading, setProductSearchLoading] = useState(false);
+  const [productMatches, setProductMatches] = useState<OpenFoodFactsProduct[]>([]);
   const [draftFood, setDraftFood] = useState<FoodDraft | null>(null);
   const [scannedUnitBasis, setScannedUnitBasis] = useState<ScannedUnitBasis | null>(null);
   const [addingFood, setAddingFood] = useState(false);
@@ -338,6 +341,73 @@ export default function FoodsPage() {
     setMessage("Food added to the database.");
   }
 
+  async function searchProductsByName() {
+    const cleaned = productSearch.trim();
+    if (!cleaned) {
+      setMessage("Type a product name first.");
+      return;
+    }
+
+    setProductSearchLoading(true);
+    setMessage("");
+    setProductMatches([]);
+
+    try {
+      const response = await fetch(
+        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(cleaned)}&search_simple=1&action=process&json=1&page_size=8`
+      );
+      const result = (await response.json()) as { products?: OpenFoodFactsProduct[] };
+      const matches = (result.products || []).filter((product) => product.product_name);
+      setProductMatches(matches);
+      if (matches.length === 0) {
+        setMessage("No products found for that name.");
+      }
+    } catch {
+      setMessage("Could not search products right now.");
+    } finally {
+      setProductSearchLoading(false);
+    }
+  }
+
+  function selectProductMatch(product: OpenFoodFactsProduct) {
+    const servingQuantity =
+      Number(product.serving_quantity) ||
+      parseServingGrams(product.serving_size) ||
+      100;
+    const hasServingMacros = product.nutriments?.["energy-kcal_serving"] != null;
+    const servingLabel = product.serving_size || (hasServingMacros ? "1 serving" : "100 g");
+
+    setDraftFood({
+      ...fallbackDraft,
+      name: product.product_name || "Unnamed searched food",
+      brand: product.brands || null,
+      serving_mode: hasServingMacros ? "unit" : "grams",
+      serving_label: hasServingMacros ? "1 serving" : servingLabel,
+      base_grams: servingQuantity || 100,
+      calories: numberOrZero(
+        hasServingMacros
+          ? product.nutriments?.["energy-kcal_serving"]
+          : product.nutriments?.["energy-kcal_100g"]
+      ),
+      protein_g: numberOrZero(
+        hasServingMacros ? product.nutriments?.proteins_serving : product.nutriments?.proteins_100g
+      ),
+      carbs_g: numberOrZero(
+        hasServingMacros
+          ? product.nutriments?.carbohydrates_serving
+          : product.nutriments?.carbohydrates_100g
+      ),
+      fat_g: numberOrZero(
+        hasServingMacros ? product.nutriments?.fat_serving : product.nutriments?.fat_100g
+      ),
+      fiber_g: numberOrZero(
+        hasServingMacros ? product.nutriments?.fiber_serving : product.nutriments?.fiber_100g
+      ),
+    });
+    setScannedUnitBasis(null);
+    setProductMatches([]);
+  }
+
   async function importFoodsFromProfile(sourceProfile: Profile) {
     if (!selectedProfileId) {
       setMessage("Choose a profile first.");
@@ -524,6 +594,39 @@ export default function FoodsPage() {
             </button>
           </div>
 
+          <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
+            <input
+              className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+              placeholder="Or search product by name"
+              value={productSearch}
+              onChange={(event) => setProductSearch(event.target.value)}
+            />
+            <button
+              type="button"
+              onClick={searchProductsByName}
+              disabled={productSearchLoading}
+              className="rounded-2xl bg-white/8 px-4 py-3 font-semibold disabled:opacity-60"
+            >
+              {productSearchLoading ? "Searching..." : "Search by name"}
+            </button>
+          </div>
+
+          {productMatches.length > 0 && (
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {productMatches.map((product, index) => (
+                <button
+                  key={`${product.product_name}-${product.brands || "brand"}-${index}`}
+                  type="button"
+                  onClick={() => selectProductMatch(product)}
+                  className="surface-strong rounded-2xl p-3 text-left"
+                >
+                  <div className="font-medium">{product.product_name}</div>
+                  <div className="muted text-sm">{product.brands || "Unknown brand"}</div>
+                </button>
+              ))}
+            </div>
+          )}
+
           {scannerMessage && <p className="muted mt-3 text-sm">{scannerMessage}</p>}
 
           <div
@@ -543,6 +646,26 @@ export default function FoodsPage() {
                     {draftFood.calories} cal · {draftFood.protein_g}g protein · {draftFood.carbs_g}g
                     carbs · {draftFood.fat_g}g fat
                   </p>
+                  <label className="mt-3 block max-w-xs">
+                    <span className="text-sm font-medium">Food type</span>
+                    <select
+                      className="mt-1 w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                      value={draftFood.category}
+                      onChange={(event) =>
+                        setDraftFood((current) =>
+                          current
+                            ? { ...current, category: event.target.value as Food["category"] }
+                            : current
+                        )
+                      }
+                    >
+                      {foodCategoryOptions.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
                 <button
                   type="button"
@@ -839,6 +962,16 @@ const mealSlotOptions = [
   { value: "snack_2", label: "Snack 2" },
   { value: "dinner", label: "Dinner" },
 ] as const;
+
+const foodCategoryOptions: Food["category"][] = [
+  "protein",
+  "carb",
+  "fat",
+  "fruit",
+  "snack",
+  "drink",
+  "other",
+];
 
 function ModalNumber({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
   return (
