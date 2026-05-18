@@ -26,6 +26,8 @@ const breaksFast = [
 ];
 
 const STORAGE_KEY = "fasting-session";
+const START_TIME_KEY = "fasting-start-time";
+const REMINDER_KEY = "fasting-start-reminder-date";
 
 type FastingSession = {
   startedAt: string;
@@ -40,6 +42,11 @@ export default function FastingPage() {
     return saved ? (JSON.parse(saved) as FastingSession) : null;
   });
   const [targetHours, setTargetHours] = useState(() => session?.targetHours || 14);
+  const [scheduledStartTime, setScheduledStartTime] = useState(() => {
+    if (typeof window === "undefined") return "20:00";
+    return window.localStorage.getItem(START_TIME_KEY) || "20:00";
+  });
+  const [reminderVersion, setReminderVersion] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">(
     () =>
@@ -86,6 +93,23 @@ export default function FastingPage() {
 
     return () => window.clearTimeout(timeoutId);
   }, [session, targetEnd]);
+
+  useEffect(() => {
+    if (!scheduledStartTime) return;
+
+    const reminderAt = getNextReminderTime(scheduledStartTime);
+    const delay = reminderAt.getTime() - Date.now();
+    const timeoutId = window.setTimeout(async () => {
+      const reminderDate = reminderAt.toLocaleDateString("en-CA");
+      if (window.localStorage.getItem(REMINDER_KEY) !== reminderDate) {
+        await notify("Fast starts soon", "Your fasting window starts in 5 minutes.");
+        window.localStorage.setItem(REMINDER_KEY, reminderDate);
+      }
+      setReminderVersion((current) => current + 1);
+    }, delay);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [scheduledStartTime, reminderVersion]);
 
   async function requestNotifications() {
     if (!("Notification" in window)) {
@@ -139,6 +163,12 @@ export default function FastingPage() {
     setMessage("Timer reset.");
   }
 
+  function updateScheduledStartTime(value: string) {
+    setScheduledStartTime(value);
+    window.localStorage.setItem(START_TIME_KEY, value);
+    setMessage("Daily fasting start time saved.");
+  }
+
   return (
     <main className="app-shell">
       <div className="mx-auto max-w-5xl">
@@ -183,7 +213,7 @@ export default function FastingPage() {
             />
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-[180px_1fr]">
+          <div className="mt-4 grid gap-3 md:grid-cols-[180px_180px_1fr]">
             <label className="block">
               <span className="text-sm font-medium">Target hours</span>
               <input
@@ -194,6 +224,15 @@ export default function FastingPage() {
                 value={targetHours}
                 disabled={Boolean(session && !session.endedAt)}
                 onChange={(event) => setTargetHours(Number(event.target.value))}
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Daily start time</span>
+              <input
+                className="mt-1 w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                type="time"
+                value={scheduledStartTime}
+                onChange={(event) => updateScheduledStartTime(event.target.value)}
               />
             </label>
             <div className="flex flex-wrap items-end gap-3">
@@ -247,6 +286,16 @@ function formatDuration(ms: number) {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
+function getNextReminderTime(startTime: string) {
+  const [hours, minutes] = startTime.split(":").map(Number);
+  const reminder = new Date();
+  reminder.setHours(hours, minutes - 5, 0, 0);
+  if (reminder.getTime() <= Date.now()) {
+    reminder.setDate(reminder.getDate() + 1);
+  }
+  return reminder;
 }
 
 function Window({ label, value }: { label: string; value: string }) {
