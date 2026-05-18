@@ -26,7 +26,8 @@ import type {
   SelectedFood,
 } from "@/lib/types";
 import MacroSummary from "@/components/MacroSummary";
-import { fetchMotivation } from "@/lib/motivation";
+import MotivationModal, { type MotivationTone } from "@/components/MotivationModal";
+import { fetchMotivation, instantMotivation } from "@/lib/motivation";
 
 type PlannedMeal = DailyPlanMeal & {
   items: DailyPlanItem[];
@@ -56,6 +57,7 @@ export default function CalculatorPage() {
   const [freeDay, setFreeDay] = useState(false);
   const [noRecalculate, setNoRecalculate] = useState(false);
   const [showManualAdd, setShowManualAdd] = useState(false);
+  const [motivation, setMotivation] = useState<{ message: string; tone: MotivationTone } | null>(null);
   const visibleFoods = useMemo(
     () =>
       foods.filter(
@@ -376,8 +378,9 @@ export default function CalculatorPage() {
       }))
     );
     if (completed) {
-      const motivation = await fetchMotivation("meal_completed", selectedProfile?.name);
-      if (motivation) setMessage(motivation);
+      setMotivation({ message: instantMotivation("meal_completed"), tone: "positive" });
+      const nextMotivation = await fetchMotivation("meal_completed", selectedProfile?.name);
+      if (nextMotivation) setMotivation({ message: nextMotivation, tone: "positive" });
     }
   }
 
@@ -481,7 +484,10 @@ export default function CalculatorPage() {
         selectedProfile?.name,
         allCompleted ? { meals_completed: nextMeals.length } : undefined
       );
-      if (motivation) setMessage(motivation);
+      setMotivation({
+        message: motivation || instantMotivation(allCompleted ? "day_completed" : "meal_completed"),
+        tone: "positive",
+      });
     }
   }
 
@@ -873,6 +879,13 @@ export default function CalculatorPage() {
           />
         </aside>
       </div>
+      {motivation && (
+        <MotivationModal
+          message={motivation.message}
+          tone={motivation.tone}
+          onClose={() => setMotivation(null)}
+        />
+      )}
     </main>
   );
 }

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, Scale, TrendingDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { fetchMotivation } from "@/lib/motivation";
+import MotivationModal, { type MotivationTone } from "@/components/MotivationModal";
+import { fetchMotivation, instantMotivation } from "@/lib/motivation";
 import type { Profile, ProgressLog } from "@/lib/types";
 
 function getTodayKey() {
@@ -18,6 +19,7 @@ export default function ProgressPage() {
   const [bodyFat, setBodyFat] = useState(0);
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
+  const [motivation, setMotivation] = useState<{ message: string; tone: MotivationTone } | null>(null);
 
   useEffect(() => {
     async function loadProfiles() {
@@ -106,11 +108,15 @@ export default function ProgressPage() {
     setLogs(nextLogs);
     const nextAnalysis = analyzeProgress(profile, data as ProgressLog);
     if (!nextAnalysis) return;
+    const event = nextAnalysis.status === "on_track" ? "progress_on_track" : "progress_needs_attention";
+    const tone: MotivationTone = nextAnalysis.status === "on_track" ? "positive" : "corrective";
+    setMotivation({ message: instantMotivation(event), tone });
     const motivation = await fetchMotivation(
-      nextAnalysis.status === "on_track" ? "progress_on_track" : "progress_needs_attention",
+      event,
       profile.name,
       { weight_lb: weight, body_fat_percentage: bodyFat, status: nextAnalysis.status }
     );
+    if (motivation) setMotivation({ message: motivation, tone });
     setMessage(motivation || "Progress saved.");
   }
 
@@ -185,6 +191,13 @@ export default function ProgressPage() {
           </div>
         </section>
       </div>
+      {motivation && (
+        <MotivationModal
+          message={motivation.message}
+          tone={motivation.tone}
+          onClose={() => setMotivation(null)}
+        />
+      )}
     </main>
   );
 }

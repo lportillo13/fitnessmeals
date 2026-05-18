@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Bell, Coffee, Droplets, Flame, MoonStar, Play, Square } from "lucide-react";
-import { fetchMotivation } from "@/lib/motivation";
+import MotivationModal from "@/components/MotivationModal";
+import { fetchMotivation, instantMotivation } from "@/lib/motivation";
 
 const allowed = [
   "Water",
@@ -56,6 +57,7 @@ export default function FastingPage() {
         : "unsupported"
   );
   const [message, setMessage] = useState("");
+  const [motivation, setMotivation] = useState<string | null>(null);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setNow(Date.now()), 1000);
@@ -154,10 +156,12 @@ export default function FastingPage() {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
     window.dispatchEvent(new Event("fasting-session-changed"));
     const completedCorrectly = Boolean(targetEnd && Date.now() >= targetEnd.getTime());
-    const motivation = completedCorrectly
-      ? await fetchMotivation("fast_completed", undefined, { target_hours: session.targetHours })
-      : "";
-    setMessage(motivation || "Fast ended.");
+    if (completedCorrectly) {
+      setMotivation(instantMotivation("fast_completed"));
+      const nextMotivation = await fetchMotivation("fast_completed", undefined, { target_hours: session.targetHours });
+      if (nextMotivation) setMotivation(nextMotivation);
+    }
+    setMessage("Fast ended.");
     await notify("Fast ended", "You ended your fast.");
   }
 
@@ -281,6 +285,13 @@ export default function FastingPage() {
           </p>
         </div>
       </div>
+      {motivation && (
+        <MotivationModal
+          message={motivation}
+          tone="positive"
+          onClose={() => setMotivation(null)}
+        />
+      )}
     </main>
   );
 }
