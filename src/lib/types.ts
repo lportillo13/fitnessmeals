@@ -50,6 +50,9 @@ export type Profile = {
   goal_body_fat_percentage: number | null;
   goal_date: string;
   goal_instruction: string | null;
+  plan_bmr: number | null;
+  plan_tdee: number | null;
+  plan_daily_deficit: number | null;
   calorie_target: number;
   protein_target: number;
   carbs_target: number;

@@ -44,7 +44,18 @@ export default function ProfilePage() {
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const [generationState, setGenerationState] = useState<"idle" | "generating" | "success">("idle");
   const [generationProgress, setGenerationProgress] = useState({ completed: 0, total: 18 });
-  const result = calculateGoalTargets(form);
+  const recalculatedTargets = calculateGoalTargets(form);
+  const loadedProfile = profiles.find((profile) => profile.id === form.id);
+  const displayedTargets = {
+    bmr: loadedProfile?.plan_bmr ?? recalculatedTargets.bmr,
+    tdee: loadedProfile?.plan_tdee ?? recalculatedTargets.tdee,
+    requiredDailyDeficit:
+      loadedProfile?.plan_daily_deficit ?? recalculatedTargets.requiredDailyDeficit,
+    calorieTarget: loadedProfile?.calorie_target ?? recalculatedTargets.calorieTarget,
+    proteinTarget: loadedProfile?.protein_target ?? recalculatedTargets.proteinTarget,
+    carbsTarget: loadedProfile?.carbs_target ?? recalculatedTargets.carbsTarget,
+    fatTarget: loadedProfile?.fat_target ?? recalculatedTargets.fatTarget,
+  };
 
   const loadProfiles = useCallback(async () => {
     const { data, error } = await createClient().from("meal_profiles").select("*").order("name");
@@ -133,10 +144,14 @@ export default function ProfilePage() {
       goal_body_fat_percentage: form.goalBodyFatPercentage || null,
       goal_date: form.goalDate,
       goal_instruction: form.goalInstruction,
-      calorie_target: result.calorieTarget,
-      protein_target: result.proteinTarget,
-      carbs_target: result.carbsTarget,
-      fat_target: result.fatTarget,
+      plan_bmr: loadedProfile?.plan_bmr ?? recalculatedTargets.bmr,
+      plan_tdee: loadedProfile?.plan_tdee ?? recalculatedTargets.tdee,
+      plan_daily_deficit:
+        loadedProfile?.plan_daily_deficit ?? recalculatedTargets.requiredDailyDeficit,
+      calorie_target: loadedProfile?.calorie_target ?? recalculatedTargets.calorieTarget,
+      protein_target: loadedProfile?.protein_target ?? recalculatedTargets.proteinTarget,
+      carbs_target: loadedProfile?.carbs_target ?? recalculatedTargets.carbsTarget,
+      fat_target: loadedProfile?.fat_target ?? recalculatedTargets.fatTarget,
     };
 
     const supabase = createClient();
@@ -182,10 +197,13 @@ export default function ProfilePage() {
       const targetPayload = {
         current_body_fat_percentage: form.currentBodyFatPercentage || null,
         goal_body_fat_percentage: form.goalBodyFatPercentage || null,
-        calorie_target: result.calorieTarget,
-        protein_target: result.proteinTarget,
-        carbs_target: result.carbsTarget,
-        fat_target: result.fatTarget,
+        plan_bmr: recalculatedTargets.bmr,
+        plan_tdee: recalculatedTargets.tdee,
+        plan_daily_deficit: recalculatedTargets.requiredDailyDeficit,
+        calorie_target: recalculatedTargets.calorieTarget,
+        protein_target: recalculatedTargets.proteinTarget,
+        carbs_target: recalculatedTargets.carbsTarget,
+        fat_target: recalculatedTargets.fatTarget,
         goal_instruction: form.goalInstruction,
       };
       const { data: updatedProfile, error: updateError } = await supabase
@@ -390,13 +408,13 @@ export default function ProfilePage() {
             Calculated Targets
           </h2>
           <div className="space-y-3">
-            <Result label="BMR" value={`${result.bmr} calories`} />
-            <Result label="Estimated TDEE" value={`${result.tdee} calories`} />
-            <Result label="Needed Daily Deficit" value={`${result.requiredDailyDeficit} calories`} />
-            <Result label="Daily Calories" value={`${result.calorieTarget} calories`} />
-            <Result label="Protein" value={`${result.proteinTarget} g`} />
-            <Result label="Carbs" value={`${result.carbsTarget} g`} />
-            <Result label="Fat" value={`${result.fatTarget} g`} />
+            <Result label="BMR" value={`${displayedTargets.bmr} calories`} />
+            <Result label="Estimated TDEE" value={`${displayedTargets.tdee} calories`} />
+            <Result label="Needed Daily Deficit" value={`${displayedTargets.requiredDailyDeficit} calories`} />
+            <Result label="Daily Calories" value={`${displayedTargets.calorieTarget} calories`} />
+            <Result label="Protein" value={`${displayedTargets.proteinTarget} g`} />
+            <Result label="Carbs" value={`${displayedTargets.carbsTarget} g`} />
+            <Result label="Fat" value={`${displayedTargets.fatTarget} g`} />
           </div>
         </aside>
       </div>
