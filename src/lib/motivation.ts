@@ -9,19 +9,15 @@ export async function fetchMotivation(
   context?: Record<string, string | number | boolean>
 ) {
   try {
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 2200);
     const response = await fetch("/api/motivation", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      signal: controller.signal,
       body: JSON.stringify({
         event,
         profile_name: profileName,
         context,
       }),
     });
-    window.clearTimeout(timeoutId);
     const payload = (await response.json()) as { message?: string };
     return payload.message || "";
   } catch {

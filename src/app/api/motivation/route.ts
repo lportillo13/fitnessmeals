@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     const { event, profile_name, context } = parsed.data;
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await client.responses.create({
-      model: process.env.OPENAI_MOTIVATION_MODEL || "gpt-5-mini",
+      model: process.env.OPENAI_MOTIVATION_MODEL || "gpt-5-nano",
       input: [
         {
           role: "system",
