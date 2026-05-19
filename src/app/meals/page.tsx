@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp, Plus, Save, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import type { Food, MealRule, MealSlot, MealTemplate, MealTemplateItem, Profile } from "@/lib/types";
+import type { Food, MealSlot, MealTemplate, MealTemplateItem, Profile } from "@/lib/types";
 
 type DraftItem = {
   foodId: string;
@@ -25,11 +25,6 @@ export default function MealsPage() {
   const [amount, setAmount] = useState(1);
   const [amountMode, setAmountMode] = useState<"serving" | "grams">("serving");
   const [message, setMessage] = useState("");
-  const [rules, setRules] = useState<MealRule[]>([]);
-  const [mealStyle, setMealStyle] = useState("");
-  const [isGeneratingAiMeal, setIsGeneratingAiMeal] = useState(false);
-  const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual");
-  const [generationState, setGenerationState] = useState<"idle" | "generating" | "success">("idle");
   const [mealSearch, setMealSearch] = useState("");
   const [mealSlotFilter, setMealSlotFilter] = useState<MealSlot | "all">("all");
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
@@ -73,7 +68,6 @@ export default function MealsPage() {
       const [
         { data: templateData, error: templateError },
         { data: itemData, error: itemError },
-        { data: ruleData, error: ruleError },
       ] =
         await Promise.all([
           supabase
@@ -82,21 +76,15 @@ export default function MealsPage() {
             .or(`profile_id.eq.${selectedProfileId},profile_id.is.null`)
             .order("name"),
           supabase.from("meal_template_items").select("*"),
-          supabase
-            .from("meal_rules")
-            .select("*")
-            .eq("profile_id", selectedProfileId)
-            .order("created_at"),
         ]);
 
-      if (templateError || itemError || ruleError) {
-        setMessage(templateError?.message || itemError?.message || ruleError?.message || "Could not load meals.");
+      if (templateError || itemError) {
+        setMessage(templateError?.message || itemError?.message || "Could not load meals.");
         return;
       }
 
       setTemplates((templateData || []) as MealTemplate[]);
       setTemplateItems((itemData || []) as MealTemplateItem[]);
-      setRules((ruleData || []) as MealRule[]);
     }
 
     loadTemplatesAndRules();
@@ -175,61 +163,6 @@ export default function MealsPage() {
     setTemplateSlot("breakfast");
     setDraftItems([]);
     setMessage("Meal template saved.");
-  }
-
-  async function generateAiMeal() {
-    const profile = profiles.find((entry) => entry.id === selectedProfileId);
-    if (!profile) {
-      setMessage("Choose a profile first.");
-      return;
-    }
-
-    setIsGeneratingAiMeal(true);
-    setGenerationState("generating");
-    setMessage("");
-    try {
-      const response = await fetch("/api/meal-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          profile,
-          foods: visibleFoods.filter((food) => food.is_available !== false),
-          rules,
-          meal_slot: templateSlot,
-          style: mealStyle,
-        }),
-      });
-      const payload = (await response.json()) as {
-        meal_name?: string;
-        items?: { food_id: string; amount: number }[];
-        error?: string;
-      };
-
-      if (!response.ok || !payload.meal_name || !payload.items) {
-        setMessage(payload.error || "AI could not create a meal.");
-        setGenerationState("idle");
-        return;
-      }
-
-      setTemplateName(payload.meal_name);
-      setDraftItems(
-        payload.items.map((item) => ({
-          foodId: item.food_id,
-          amount: item.amount,
-          amountMode:
-            visibleFoods.find((food) => food.id === item.food_id)?.serving_mode === "grams"
-              ? "grams"
-              : "serving",
-        }))
-      );
-      setMessage("AI meal created. Review it, then save.");
-      setGenerationState("success");
-    } catch {
-      setMessage("AI meal generation failed before the server returned a response.");
-      setGenerationState("idle");
-    } finally {
-      setIsGeneratingAiMeal(false);
-    }
   }
 
   async function deleteTemplate(templateId: string) {
@@ -313,27 +246,6 @@ export default function MealsPage() {
             Build one meal at a time here. Review and manage all saved meals on the right.
           </p>
 
-          <div className="mb-4 flex gap-2">
-            <button
-              type="button"
-              onClick={() => setCreationMode("manual")}
-              className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                creationMode === "manual" ? "bg-lime-300 text-black" : "bg-white/8"
-              }`}
-            >
-              Create manually
-            </button>
-            <button
-              type="button"
-              onClick={() => setCreationMode("ai")}
-              className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                creationMode === "ai" ? "bg-lime-300 text-black" : "bg-white/8"
-              }`}
-            >
-              Create with AI
-            </button>
-          </div>
-
           <div className="rounded-3xl bg-white/[0.03] p-4">
             <div className="grid grid-cols-2 gap-3">
               <input className="col-span-2 rounded-2xl border border-white/10 bg-white/5 p-3 text-white" placeholder="Meal name" value={templateName} onChange={(event) => setTemplateName(event.target.value)} />
@@ -350,25 +262,6 @@ export default function MealsPage() {
             </div>
           </div>
 
-          {creationMode === "ai" && (
-            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
-              <input
-                className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
-                placeholder="Style: Latin, simple, high protein..."
-                value={mealStyle}
-                onChange={(event) => setMealStyle(event.target.value)}
-              />
-              <button
-                onClick={generateAiMeal}
-                disabled={isGeneratingAiMeal}
-                className="rounded-2xl bg-white/8 px-5 py-3 font-semibold disabled:opacity-60"
-              >
-                {isGeneratingAiMeal ? "Designing..." : "Design AI meal"}
-              </button>
-            </div>
-          )}
-
-          {creationMode === "manual" && (
           <div className="mt-4 rounded-3xl bg-white/[0.03] p-4">
             <p className="mb-3 text-sm font-semibold text-slate-200">Add foods</p>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-[1fr_120px_120px_auto]">
@@ -401,7 +294,6 @@ export default function MealsPage() {
             <button onClick={addDraftItem} className="col-span-2 inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold lg:col-span-1"><Plus className="h-4 w-4" />Add</button>
             </div>
           </div>
-          )}
 
           <div className="mt-4 space-y-2">
             {draftItems.map((item, index) => {
@@ -518,17 +410,6 @@ export default function MealsPage() {
         </section>
       </div>
 
-      {generationState !== "idle" && (
-        <GenerationModal
-          title={generationState === "generating" ? "Generating meal" : "Meal generated"}
-          body={
-            generationState === "generating"
-              ? "Designing a meal from the available foods and current profile targets."
-              : "The meal was generated successfully. Review it, then save it."
-          }
-          onClose={generationState === "success" ? () => setGenerationState("idle") : undefined}
-        />
-      )}
     </main>
   );
 }
@@ -538,35 +419,3 @@ function formatSlot(slot: MealSlot | null) {
   return slot.replace("_", " ");
 }
 
-function GenerationModal({
-  title,
-  body,
-  onClose,
-}: {
-  title: string;
-  body: string;
-  onClose?: () => void;
-}) {
-  useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, []);
-
-  return (
-    <div className="modal-overlay fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
-      <div className="modal-panel surface w-full max-w-md rounded-3xl p-6 text-center">
-        <h2 className="text-2xl font-bold">{title}</h2>
-        <p className="muted mt-3">{body}</p>
-        {onClose ? (
-          <button onClick={onClose} className="mt-5 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black">
-            Done
-          </button>
-        ) : (
-          <div className="mx-auto mt-5 h-8 w-8 animate-spin rounded-full border-4 border-white/15 border-t-lime-300" />
-        )}
-      </div>
-    </div>
-  );
-}

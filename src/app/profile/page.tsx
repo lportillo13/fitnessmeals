@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Activity, Sparkles, Save, Target, UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { calculateGoalTargets } from "@/lib/goalCalculator";
+import { buildCoachPlan } from "@/lib/goalCoach";
 import type { Profile } from "@/lib/types";
 
 type ProfileForm = {
@@ -43,7 +44,6 @@ export default function ProfilePage() {
   const [message, setMessage] = useState("");
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const [generationState, setGenerationState] = useState<"idle" | "generating" | "success">("idle");
-  const [generationProgress, setGenerationProgress] = useState({ completed: 0, total: 18 });
   const recalculatedTargets = calculateGoalTargets(form);
   const loadedProfile = profiles.find((profile) => profile.id === form.id);
   const displayedTargets = {
@@ -56,6 +56,18 @@ export default function ProfilePage() {
     carbsTarget: loadedProfile?.carbs_target ?? recalculatedTargets.carbsTarget,
     fatTarget: loadedProfile?.fat_target ?? recalculatedTargets.fatTarget,
   };
+  const coachPlan = buildCoachPlan(
+    {
+      name: form.name,
+      goal_date: form.goalDate,
+      goal_loss_lb: form.goalLossLb,
+      steps_per_day: form.stepsPerDay,
+      training_days_per_week: form.trainingDaysPerWeek,
+      weight_lb: form.weightLb,
+      goal_instruction: form.goalInstruction,
+    },
+    displayedTargets
+  );
 
   const loadProfiles = useCallback(async () => {
     const { data, error } = await createClient().from("meal_profiles").select("*").order("name");
@@ -185,14 +197,9 @@ export default function ProfilePage() {
       setMessage("Save this profile first, then generate the nutrition plan.");
       return;
     }
-    if (!form.goalInstruction.trim()) {
-      setMessage("Write a goal instruction first.");
-      return;
-    }
 
     setIsGeneratingPlan(true);
     setGenerationState("generating");
-    setGenerationProgress({ completed: 0, total: 18 });
     setMessage("");
     const supabase = createClient();
     try {
@@ -210,96 +217,18 @@ export default function ProfilePage() {
         fat_target: recalculatedTargets.fatTarget,
         goal_instruction: form.goalInstruction,
       };
-      const { data: updatedProfile, error: updateError } = await supabase
+      const { error: updateError } = await supabase
         .from("meal_profiles")
         .update(targetPayload)
-        .eq("id", form.id)
-        .select("*")
-        .single();
+        .eq("id", form.id);
       if (updateError) {
         setMessage(updateError.message);
         setGenerationState("idle");
-        return;
-      }
-
-      const [{ data: foodData }, { data: profileData }] = await Promise.all([
-        supabase
-          .from("foods")
-          .select("*")
-          .eq("is_available", true)
-          .or(`profile_id.eq.${form.id},profile_id.is.null`)
-          .order("name"),
-        Promise.resolve({ data: updatedProfile }),
-      ]);
-      const foods = (foodData || []).filter((food) => food.category !== "drink");
-      if (foods.length === 0) {
-        setMessage("Mark at least one non-drink food as available before generating a plan.");
-        setGenerationState("idle");
-        return;
-      }
-
-      const generationStreams = [
-        { meal_slot: "breakfast" as const, total: 5 },
-        { meal_slot: "lunch" as const, total: 5 },
-        { meal_slot: "dinner" as const, total: 5 },
-        { meal_slot: "snack_1" as const, total: 3 },
-      ];
-      const batchPayloads = await Promise.all(
-        generationStreams.map(async (stream) => {
-          const streamMeals = [];
-          for (let index = 0; index < stream.total; index += 1) {
-            const meals = await generateMealBatch(
-              { meal_slot: stream.meal_slot, count: 1 },
-              profileData,
-              foods,
-              form.goalInstruction
-            );
-            streamMeals.push(...meals);
-            setGenerationProgress((current) => ({
-              ...current,
-              completed: current.completed + meals.length,
-            }));
-          }
-          return streamMeals;
-        })
-      );
-      const generatedMeals = batchPayloads.flat();
-
-      const { data: oldTemplates } = await supabase
-        .from("meal_templates")
-        .select("id")
-        .eq("profile_id", form.id);
-      const oldTemplateIds = (oldTemplates || []).map((template) => template.id);
-      if (oldTemplateIds.length > 0) {
-        await supabase.from("meal_templates").delete().in("id", oldTemplateIds);
-      }
-
-      for (const meal of generatedMeals) {
-        const { data: template, error } = await supabase
-          .from("meal_templates")
-          .insert({
-            profile_id: form.id,
-            name: meal.meal_name,
-            meal_slot: meal.meal_slot,
-          })
-          .select()
-          .single();
-        if (error) {
-          setMessage(error.message);
           return;
         }
-        await supabase.from("meal_template_items").insert(
-          meal.items.map((item) => ({
-            meal_template_id: template.id,
-            food_id: item.food_id,
-            amount: item.amount,
-            amount_mode: item.amount_mode,
-          }))
-        );
-      }
 
       setMessage(
-        "Nutrition plan created. Built a fresh goal-based meal library from your available foods and profile targets."
+        "Coach macro plan saved. The app will use saved meals first and food-based fallback meals only when a slot has no saved option."
       );
       setGenerationState("success");
       await loadProfiles();
@@ -402,7 +331,7 @@ export default function ProfilePage() {
             className="ml-3 mt-4 inline-flex items-center gap-2 rounded-2xl bg-white/8 px-5 py-3 font-semibold disabled:opacity-60"
           >
             <Sparkles className="h-4 w-4" />
-            {isGeneratingPlan ? "Generating..." : "Generate nutrition plan"}
+            {isGeneratingPlan ? "Building..." : "Build coach macro plan"}
           </button>
           {message && <p className="muted mt-3 text-sm">{message}</p>}
         </section>
@@ -421,6 +350,20 @@ export default function ProfilePage() {
             <Result label="Carbs" value={`${displayedTargets.carbsTarget} g`} />
             <Result label="Fat" value={`${displayedTargets.fatTarget} g`} />
           </div>
+          <div className="mt-5 space-y-3">
+            <div className="surface-strong rounded-2xl p-3">
+              <p className="text-sm font-semibold">Coach read</p>
+              <p className="muted mt-1 text-sm">{coachPlan.coachNotes.join(" ")}</p>
+            </div>
+            <div className="surface-strong rounded-2xl p-3">
+              <p className="text-sm font-semibold">Daily coaching steps</p>
+              <ul className="mt-2 space-y-2 text-sm text-slate-200">
+                {coachPlan.steps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </aside>
       </div>
       {generationState !== "idle" && (
@@ -428,8 +371,8 @@ export default function ProfilePage() {
           title={generationState === "generating" ? "Generating nutrition plan" : "Nutrition plan ready"}
           body={
             generationState === "generating"
-              ? `Building meals from this profile, its goal, and the foods currently available. ${generationProgress.completed}/${generationProgress.total} ready.`
-              : "Your new nutrition plan and saved meals were generated successfully."
+              ? "Saving macro targets and coaching steps from this profile."
+              : "Your macro targets and coaching plan are ready. No meals were generated."
           }
           onClose={generationState === "success" ? () => setGenerationState("idle") : undefined}
         />
@@ -521,72 +464,4 @@ function GenerationModal({
       </div>
     </div>
   );
-}
-
-async function generateMealBatch(
-  batch: { meal_slot: "breakfast" | "snack_1" | "lunch" | "dinner"; count: number },
-  profile: unknown,
-  foods: unknown[],
-  goalInstruction: string
-) {
-  let lastError: Error | null = null;
-
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 45000);
-    try {
-      const response = await fetch("/api/nutrition-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          profile,
-          foods,
-          goal_instruction: goalInstruction,
-          ...batch,
-        }),
-      });
-      const rawBody = await response.text();
-      let payload: {
-        meals?: {
-          meal_name: string;
-          meal_slot: "breakfast" | "snack_1" | "lunch" | "dinner";
-          items: { food_id: string; amount: number; amount_mode?: "serving" | "grams" }[];
-        }[];
-        error?: string;
-        details?: unknown;
-      };
-      try {
-        payload = JSON.parse(rawBody) as typeof payload;
-      } catch {
-        throw new Error(
-          response.status === 504
-            ? "Meal generation timed out at the server gateway."
-            : `The server returned an unexpected ${response.status} response during meal generation.`
-        );
-      }
-      if (!response.ok || !payload.meals) {
-        throw new Error(
-          payload.error
-            ? `${payload.error}${payload.details ? ` ${JSON.stringify(payload.details)}` : ""}`
-            : "AI could not create the nutrition plan."
-        );
-      }
-      return payload.meals;
-    } catch (error) {
-      lastError =
-        error instanceof DOMException && error.name === "AbortError"
-          ? new Error("Meal generation timed out after 45 seconds.")
-          : error instanceof Error
-            ? error
-            : new Error("Meal generation failed.");
-      if (attempt < 3) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1200 * attempt));
-      }
-    } finally {
-      window.clearTimeout(timeoutId);
-    }
-  }
-
-  throw lastError || new Error("Meal generation failed.");
 }

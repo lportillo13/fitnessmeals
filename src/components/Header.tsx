@@ -75,7 +75,8 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
-    setIsMoreOpen(false);
+    const timeoutId = window.setTimeout(() => setIsMoreOpen(false), 0);
+    return () => window.clearTimeout(timeoutId);
   }, [pathname]);
 
   function changeProfile(profileId: string) {

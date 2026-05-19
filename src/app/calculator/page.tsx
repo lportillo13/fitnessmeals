@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronDown, ChevronUp, Plus, RefreshCw, Shuffle, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CheckCircle2, ChevronDown, ChevronUp, Plus, RefreshCw, Save, Shuffle, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  buildTemplateOptions,
+  buildPlanningOptions,
   chooseOptimizedDayPlan,
   getSlotOptions,
   planRemainingMealsByBudget,
@@ -12,7 +12,7 @@ import {
   plannerSlots,
   type TemplateOption,
 } from "@/lib/mealPlanner";
-import { calculateDailyTotals, calculateFoodMacros, roundMacros } from "@/lib/macroCalculator";
+import { calculateDailyTotals, calculateFoodMacros, inferAmountMode, roundMacros } from "@/lib/macroCalculator";
 import type {
   DailyPlan,
   DailyPlanItem,
@@ -27,7 +27,7 @@ import type {
 } from "@/lib/types";
 import MacroSummary from "@/components/MacroSummary";
 import MotivationModal, { type MotivationTone } from "@/components/MotivationModal";
-import { fetchMotivation, instantMotivation } from "@/lib/motivation";
+import { instantMotivation } from "@/lib/motivation";
 
 type PlannedMeal = DailyPlanMeal & {
   items: DailyPlanItem[];
@@ -157,13 +157,16 @@ export default function CalculatorPage() {
         .eq("daily_plan_id", planData.id)
         .order("meal_slot");
       const loadedMeals = (mealData || []) as DailyPlanMeal[];
-      const { data: itemData } = await supabase
-        .from("daily_plan_items")
-        .select("*")
-        .in(
-          "daily_plan_meal_id",
-          loadedMeals.map((meal) => meal.id)
-        );
+      const { data: itemData } =
+        loadedMeals.length > 0
+          ? await supabase
+              .from("daily_plan_items")
+              .select("*")
+              .in(
+                "daily_plan_meal_id",
+                loadedMeals.map((meal) => meal.id)
+              )
+          : { data: [] };
       setMeals(
         loadedMeals.map((meal) => ({
           ...meal,
@@ -185,12 +188,15 @@ export default function CalculatorPage() {
 
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
   const options = useMemo(
-    () => buildTemplateOptions(templates, templateItems, visibleFoods),
-    [templates, templateItems, visibleFoods]
+    () =>
+      selectedProfile
+        ? buildPlanningOptions(selectedProfile, templates, templateItems, visibleFoods, rules)
+        : [],
+    [selectedProfile, templates, templateItems, visibleFoods, rules]
   );
   const selectedFoods = useMemo<SelectedFood[]>(
     () =>
-      meals.filter((meal) => meal.completed).flatMap((meal) =>
+      meals.flatMap((meal) =>
         meal.items.flatMap((item) => {
           const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
           return food
@@ -198,8 +204,7 @@ export default function CalculatorPage() {
                 {
                   food,
                   amount: Number(item.amount),
-                  amountMode:
-                    item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving"),
+                  amountMode: inferAmountMode(food, Number(item.amount), item.amount_mode),
                   mealSlot: meal.meal_slot,
                 },
               ]
@@ -217,16 +222,11 @@ export default function CalculatorPage() {
   const manualFood = visibleFoods.find((food) => food.id === manualFoodId);
   const canUseManualGrams = Boolean(manualFood?.base_grams);
 
-  useEffect(() => {
-    if (!selectedProfile || !checkedTodayPlan || plan || options.length === 0) return;
-    void generatePlan();
-  }, [selectedProfile, checkedTodayPlan, plan, options.length]);
-
-  async function generatePlan() {
+  const generatePlan = useCallback(async () => {
     if (!selectedProfile) return;
     const chosen = chooseOptimizedDayPlan(selectedProfile, options, rules, visibleFoods);
     if (chosen.some((entry) => !entry.selected)) {
-      setMessage("Create at least one available saved meal for every meal slot first.");
+      setMessage("Add available foods with protein and carbs, or save a meal for each empty slot.");
       return;
     }
 
@@ -282,8 +282,15 @@ export default function CalculatorPage() {
     );
     setOpenMealSlot("breakfast");
     setMessage("Today's meal plan is ready.");
-  }
+  }, [selectedProfile, options, rules, visibleFoods, plan]);
 
+  useEffect(() => {
+    if (!selectedProfile || !checkedTodayPlan || plan || options.length === 0) return;
+    const timeoutId = window.setTimeout(() => {
+      void generatePlan();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [selectedProfile, checkedTodayPlan, plan, options.length, generatePlan]);
 
   async function replaceMeal(slot: MealSlot, option: TemplateOption) {
     const meal = meals.find((candidate) => candidate.meal_slot === slot);
@@ -328,7 +335,7 @@ export default function CalculatorPage() {
       meal.meal_slot === slot
         ? {
             ...meal,
-            meal_template_id: option.template.id,
+            meal_template_id: option.template.id.startsWith("synthetic-") ? null : option.template.id,
             meal_name: option.template.name,
             completed: false,
             no_rebalance: option.template.no_rebalance || false,
@@ -405,8 +412,8 @@ export default function CalculatorPage() {
   }
 
   function formatItemAmount(item: DailyPlanItem, food: Food) {
-    const amountMode = item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving");
-    return amountMode === "grams" ? `${item.amount} g` : `${item.amount} × ${food.serving_label}`;
+    const amountMode = inferAmountMode(food, Number(item.amount), item.amount_mode);
+    return amountMode === "grams" ? `${item.amount} g` : `${item.amount} x ${food.serving_label}`;
   }
 
   async function toggleItemCompleted(itemId: string, completed: boolean) {
@@ -452,8 +459,7 @@ export default function CalculatorPage() {
                 {
                   food,
                   amount: Number(item.amount),
-                  amountMode:
-                    item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving"),
+                  amountMode: inferAmountMode(food, Number(item.amount), item.amount_mode),
                   mealSlot: meal.meal_slot,
                 },
               ]
@@ -590,6 +596,53 @@ export default function CalculatorPage() {
     }
   }
 
+  async function savePlannedMealAsTemplate(meal: PlannedMeal) {
+    if (!selectedProfile) return;
+    if (meal.items.length === 0) {
+      setMessage("Add at least one food before saving this meal.");
+      return;
+    }
+
+    const supabase = createClient();
+    const { data: template, error } = await supabase
+      .from("meal_templates")
+      .insert({
+        profile_id: selectedProfile.id,
+        name: meal.meal_name,
+        meal_slot: meal.meal_slot,
+      })
+      .select("*")
+      .single();
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    const rows = meal.items.map((item) => {
+      const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
+      return {
+        meal_template_id: template.id,
+        food_id: item.food_id,
+        amount: Number(item.amount),
+        amount_mode: food ? inferAmountMode(food, Number(item.amount), item.amount_mode) : item.amount_mode,
+      };
+    });
+    const { data: createdItems, error: itemError } = await supabase
+      .from("meal_template_items")
+      .insert(rows)
+      .select("*");
+
+    if (itemError) {
+      setMessage(itemError.message);
+      return;
+    }
+
+    setTemplates((current) => [...current, template as MealTemplate]);
+    setTemplateItems((current) => [...current, ...((createdItems || []) as MealTemplateItem[])]);
+    setMessage(`${meal.meal_name} saved to your meal library.`);
+  }
+
   async function removeItem(itemId: string) {
     await createClient().from("daily_plan_items").delete().eq("id", itemId);
     const nextMeals = meals.map((meal) => ({ ...meal, items: meal.items.filter((item) => item.id !== itemId) }));
@@ -614,8 +667,7 @@ export default function CalculatorPage() {
         : currentFood.category === "carb"
           ? "carbs"
           : "fat";
-    const currentAmountMode =
-      item.amount_mode || (currentFood.serving_mode === "grams" ? "grams" : "serving");
+    const currentAmountMode = inferAmountMode(currentFood, Number(item.amount), item.amount_mode);
     const currentMacroAmount = calculateFoodMacros(
       currentFood,
       Number(item.amount),
@@ -812,6 +864,10 @@ export default function CalculatorPage() {
             {plannerSlots.map((slot) => {
               const meal = meals.find((candidate) => candidate.meal_slot === slot.key);
               const slotOptions = getSlotOptions(options, slot.key, rules);
+              const selectedOptionValue =
+                meal?.meal_template_id ||
+                slotOptions.find((option) => option.template.name === meal?.meal_name)?.template.id ||
+                "";
               return (
                 <div key={slot.key} className="surface rounded-3xl p-5">
                   <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-3">
@@ -826,8 +882,9 @@ export default function CalculatorPage() {
                     {meal && (
                       <div className="grid min-w-0 w-full grid-cols-2 gap-2 md:flex md:w-auto md:flex-wrap">
                         <button onClick={() => shuffleMeal(slot.key)} className="inline-flex min-w-0 items-center justify-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm"><Shuffle className="h-4 w-4" />Random swap</button>
+                        <button onClick={() => savePlannedMealAsTemplate(meal)} className="inline-flex min-w-0 items-center justify-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm"><Save className="h-4 w-4" />Save meal</button>
                         <MealOptionSelect
-                          value={meal.meal_template_id || ""}
+                          value={selectedOptionValue}
                           options={slotOptions}
                           onChange={(value) => {
                             const option = slotOptions.find((candidate) => candidate.template.id === value);
@@ -847,8 +904,7 @@ export default function CalculatorPage() {
                       {meal.items.map((item) => {
               const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
                         if (!food) return null;
-              const itemAmountMode =
-                item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving");
+              const itemAmountMode = inferAmountMode(food, Number(item.amount), item.amount_mode);
               const swapCandidates = visibleFoods.filter(
                           (candidate) =>
                             candidate.category === food.category &&

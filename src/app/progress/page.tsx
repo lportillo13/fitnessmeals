@@ -65,8 +65,11 @@ export default function ProgressPage() {
 
   useEffect(() => {
     if (!profile) return;
-    setWeight(latestLog?.weight_lb || profile.weight_lb);
-    setBodyFat(latestLog?.body_fat_percentage || profile.current_body_fat_percentage || 0);
+    const timeoutId = window.setTimeout(() => {
+      setWeight(latestLog?.weight_lb || profile.weight_lb);
+      setBodyFat(latestLog?.body_fat_percentage || profile.current_body_fat_percentage || 0);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [profile, latestLog]);
 
   async function saveLog() {

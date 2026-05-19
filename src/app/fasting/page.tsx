@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bell, Coffee, Droplets, Flame, MoonStar, Play, Square } from "lucide-react";
 import MotivationModal from "@/components/MotivationModal";
-import { fetchMotivation, instantMotivation } from "@/lib/motivation";
+import { instantMotivation } from "@/lib/motivation";
 
 const allowed = [
   "Water",

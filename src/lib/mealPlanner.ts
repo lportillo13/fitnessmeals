@@ -1,4 +1,10 @@
-import { calculateFoodMacros } from "./macroCalculator";
+import {
+  amountToGramEquivalent,
+  calculateFoodMacros,
+  inferAmountMode,
+  minimumFoodAmount,
+  type AmountMode,
+} from "./macroCalculator";
 import type {
   Food,
   MacroTotals,
@@ -46,26 +52,25 @@ export function buildTemplateOptions(
   );
 
   return templates.reduce<TemplateOption[]>((result, template) => {
-      const items = templateItems.filter((item) => item.meal_template_id === template.id);
       const slot = inferMealSlot(template);
-      if (!slot || items.length === 0) return result;
-      if (items.some((item) => !availableFoodIds.has(item.food_id))) return result;
-      if (
-        items.some((item) => {
+      if (!slot) return result;
+      const items = templateItems
+        .filter((item) => item.meal_template_id === template.id)
+        .flatMap((item) => {
           const food = foodById.get(item.food_id);
-          return food && food.allowed_meal_slots?.length > 0 && !food.allowed_meal_slots.includes(slot);
-        })
-      ) return result;
-      if (items.filter((item) => foodById.get(item.food_id)?.category === "carb").length > 1) {
-        return result;
-      }
-      if (slot === "lunch" || slot === "dinner") {
-        const proteinAmount = items.reduce((sum, item) => {
-          const food = foodById.get(item.food_id);
-          return food?.category === "protein" ? sum + Number(item.amount) : sum;
-        }, 0);
-        if (proteinAmount < 100 || proteinAmount > 150) return result;
-      }
+          if (!food || !availableFoodIds.has(item.food_id)) return [];
+          if (food.allowed_meal_slots?.length > 0 && !food.allowed_meal_slots.includes(slot)) {
+            return [];
+          }
+          return [
+            {
+              ...item,
+              amount: Number(item.amount),
+              amount_mode: inferAmountMode(food, Number(item.amount), item.amount_mode),
+            },
+          ];
+        });
+      if (items.length === 0) return result;
 
       const macros = items.reduce<MacroTotals>(
         (totals, item) => {
@@ -74,7 +79,7 @@ export function buildTemplateOptions(
           const next = calculateFoodMacros(
             food,
             item.amount,
-            item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving")
+            item.amount_mode
           );
           return {
             calories: totals.calories + next.calories,
@@ -94,6 +99,135 @@ export function buildTemplateOptions(
       });
       return result;
     }, []);
+}
+
+export function buildPlanningOptions(
+  profile: Profile,
+  templates: MealTemplate[],
+  templateItems: MealTemplateItem[],
+  foods: Food[],
+  rules: MealRule[]
+) {
+  const savedOptions = buildTemplateOptions(templates, templateItems, foods);
+  const fallbackOptions = plannerSlots.flatMap((slot) => {
+    const savedForSlot = getSlotOptions(savedOptions, slot.key, rules);
+    return savedForSlot.length > 0
+      ? []
+      : buildFoodFallbackOptions(profile, foods, slot.key, rules);
+  });
+
+  return [...savedOptions, ...fallbackOptions];
+}
+
+function buildFoodFallbackOptions(
+  profile: Profile,
+  foods: Food[],
+  slot: MealSlot,
+  rules: MealRule[]
+): TemplateOption[] {
+  const target = slotTarget(
+    profile,
+    plannerSlots.find((entry) => entry.key === slot)?.share || 0.2
+  );
+  const slotFoods = foods.filter(
+    (food) =>
+      food.is_available !== false &&
+      food.category !== "drink" &&
+      (!food.allowed_meal_slots?.length || food.allowed_meal_slots.includes(slot))
+  );
+  const proteins = topFoods(
+    slotFoods.filter((food) => food.category === "protein"),
+    "protein",
+    7
+  );
+  const carbs = topFoods(
+    slotFoods.filter((food) => food.category === "carb"),
+    "carbs",
+    7
+  );
+  const fats = topFoods(
+    slotFoods.filter((food) => food.category === "fat"),
+    "fat",
+    6
+  );
+  const vegetables = slotFoods
+    .filter((food) => food.category === "other")
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 5);
+  const fruits = topFoods(
+    slotFoods.filter((food) => food.category === "fruit"),
+    "carbs",
+    6
+  );
+  const snacks = topFoods(
+    slotFoods.filter((food) => food.category === "snack"),
+    "protein",
+    5
+  );
+  const requiredRules = rules.filter((rule) => rule.is_active && rule.meal_slot === slot);
+  const rawCandidates: MealTemplateItem[][] = [];
+
+  if (slot === "snack_1" || slot === "snack_2") {
+    const snackProteins = proteins.filter((food) => isSnackProtein(food)).slice(0, 6);
+    const fruitChoices = fruits.length > 0 ? fruits : snacks;
+    for (const protein of snackProteins.length > 0 ? snackProteins : proteins) {
+      for (const fruit of fruitChoices.length > 0 ? fruitChoices : [undefined]) {
+        const foodsForMeal = [protein, fruit].filter(Boolean) as Food[];
+        if (foodsForMeal.length === 0 || !isFoodSetCompatible(slot, foodsForMeal)) continue;
+        rawCandidates.push(foodsForMeal.map((food) => fallbackItemForFood(food, slot)));
+      }
+    }
+  } else {
+    const carbChoices = carbs.length > 0 ? carbs : fruits;
+    const vegetableChoices = vegetables.length > 0 ? vegetables : [undefined];
+    const fatChoices = fats.length > 0 ? fats : [undefined];
+    for (const protein of proteins) {
+      for (const carb of carbChoices) {
+        for (const vegetable of vegetableChoices) {
+          for (const fat of fatChoices) {
+            const foodsForMeal = [protein, carb, vegetable, fat].filter(Boolean) as Food[];
+            const uniqueFoodIds = new Set(foodsForMeal.map((food) => food.id));
+            if (uniqueFoodIds.size !== foodsForMeal.length) continue;
+            if (!isFoodSetCompatible(slot, foodsForMeal)) continue;
+            rawCandidates.push(foodsForMeal.map((food) => fallbackItemForFood(food, slot)));
+          }
+        }
+      }
+    }
+  }
+
+  const foodById = new Map(foods.map((food) => [food.id, food]));
+
+  return rawCandidates
+    .filter((items) => followsRequiredFoods(items, requiredRules))
+    .map((items, index) => {
+      const tunedItems = rebalanceMealItems(items, foods, target, requiredRules, slot).map(
+        (item) => ({
+          ...item,
+          id: `${item.id}-${index}`,
+          meal_template_id: `synthetic-${slot}-${index}`,
+        })
+      );
+      const macros = totalForItems(tunedItems, foodById);
+      const mealFoods = tunedItems
+        .map((item) => foodById.get(item.food_id)?.name)
+        .filter(Boolean)
+        .join(" + ");
+      return {
+        template: {
+          id: `synthetic-${slot}-${index}`,
+          profile_id: null,
+          name: `${formatSlotName(slot)}: ${mealFoods}`,
+          meal_slot: slot,
+          is_default_daily: false,
+          no_rebalance: false,
+        },
+        items: tunedItems,
+        macros,
+      };
+    })
+    .sort((a, b) => scoreOption(a.macros, target) - scoreOption(b.macros, target))
+    .slice(0, 8);
 }
 
 
@@ -288,7 +422,14 @@ export function rebalanceMealItems(
   slot?: MealSlot
 ) {
   const foodById = new Map(foods.map((food) => [food.id, food]));
-  const nextItems = items.map((item) => ({ ...item }));
+  const nextItems = items.map((item) => {
+    const food = foodById.get(item.food_id);
+    return {
+      ...item,
+      amount: Number(item.amount),
+      amount_mode: food ? inferAmountMode(food, Number(item.amount), item.amount_mode) : item.amount_mode,
+    };
+  });
 
   for (let iteration = 0; iteration < 80; iteration += 1) {
     const current = totalForItems(nextItems, foodById);
@@ -299,14 +440,20 @@ export function rebalanceMealItems(
     for (const item of nextItems) {
       const food = foodById.get(item.food_id);
       if (!food) continue;
-      const itemAmountMode = item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving");
+      const itemAmountMode = inferAmountMode(food, item.amount, item.amount_mode);
       const step = itemAmountMode === "grams" ? 5 : 0.25;
       for (const direction of [-1, 1]) {
         const candidateAmount = Math.max(
-          minimumAmountForFood(food, itemAmountMode),
+          minimumFoodAmount(food, itemAmountMode),
           roundAmount(item.amount + step * direction, step)
         );
-        if (food.category === "protein" && (slot === "lunch" || slot === "dinner") && candidateAmount < 100) {
+        const candidateGrams = amountToGramEquivalent(food, candidateAmount, itemAmountMode);
+        if (
+          food.category === "protein" &&
+          (slot === "lunch" || slot === "dinner") &&
+          candidateGrams !== null &&
+          candidateGrams < 90
+        ) {
           continue;
         }
         if (!isAmountAllowed(item, candidateAmount, food, rules)) continue;
@@ -427,7 +574,7 @@ function totalForItems(items: MealTemplateItem[], foodById: Map<string, Food>) {
       const next = calculateFoodMacros(
         food,
         item.amount,
-        item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving")
+        item.amount_mode
       );
       return {
         calories: totals.calories + next.calories,
@@ -442,7 +589,161 @@ function totalForItems(items: MealTemplateItem[], foodById: Map<string, Food>) {
 }
 
 function roundAmount(value: number, step: number) {
-  return Math.round(value / step) * step;
+  return Number((Math.round(value / step) * step).toFixed(2));
+}
+
+function topFoods(foods: Food[], macro: "protein" | "carbs" | "fat", limit: number) {
+  return [...foods]
+    .sort((a, b) => defaultMacroAmount(b, macro) - defaultMacroAmount(a, macro))
+    .slice(0, limit);
+}
+
+function defaultMacroAmount(food: Food, macro: "protein" | "carbs" | "fat") {
+  const item = fallbackItemForFood(food, "lunch");
+  return calculateFoodMacros(food, item.amount, item.amount_mode)[macro];
+}
+
+function fallbackItemForFood(food: Food, slot: MealSlot): MealTemplateItem {
+  const amountMode: AmountMode = food.serving_mode === "grams" ? "grams" : "serving";
+  const amount =
+    amountMode === "grams"
+      ? defaultGramAmount(food, slot)
+      : defaultServingAmount(food);
+
+  return {
+    id: `synthetic-item-${slot}-${food.id}`,
+    meal_template_id: `synthetic-${slot}`,
+    food_id: food.id,
+    amount,
+    amount_mode: amountMode,
+  };
+}
+
+function defaultServingAmount(food: Food) {
+  if (food.category === "fruit" || food.category === "snack") return 1;
+  if (food.category === "protein") return 1;
+  return 1;
+}
+
+function defaultGramAmount(food: Food, slot: MealSlot) {
+  const base = Number(food.base_grams || 100);
+  const amount =
+    food.category === "protein"
+      ? slot === "lunch" || slot === "dinner"
+        ? clamp(base < 90 ? 120 : base, 90, 170)
+        : clamp(base, 50, 170)
+      : food.category === "carb"
+        ? clamp(base, 30, 180)
+        : food.category === "fat"
+          ? clamp(base, 5, 25)
+          : food.category === "other"
+            ? clamp(base, 80, 200)
+            : food.category === "fruit"
+              ? clamp(base, 80, 160)
+              : clamp(base, 30, 120);
+
+  return clampAmountForFood(food, amount, "grams");
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function clampAmountForFood(food: Food, amount: number, amountMode: AmountMode) {
+  const minimum = minimumFoodAmount(food, amountMode);
+  const maximum = Math.max(minimum, maximumAmountForFood(food, amountMode));
+  const step = amountMode === "grams" ? 5 : 0.25;
+  return roundAmount(clamp(amount, minimum, maximum), step);
+}
+
+function maximumAmountForFood(food: Food, amountMode: AmountMode) {
+  if (food.max_amount != null) {
+    const maxAmount = Number(food.max_amount);
+    if (amountMode === "grams") return maxAmount;
+    if (food.base_grams && food.serving_mode === "grams") {
+      return maxAmount / food.base_grams;
+    }
+    return maxAmount;
+  }
+
+  if (amountMode === "serving") {
+    if (food.category === "protein") return 3;
+    if (food.category === "fruit" || food.category === "snack") return 2;
+    if (food.category === "fat") return 3;
+    return 3;
+  }
+
+  if (food.category === "protein") return 240;
+  if (food.category === "carb") return 260;
+  if (food.category === "fat") return 35;
+  if (food.category === "fruit") return 250;
+  if (food.category === "other") return 350;
+  return 160;
+}
+
+function followsRequiredFoods(items: MealTemplateItem[], rules: MealRule[]) {
+  return rules.every((rule) => {
+    if (rule.rule_type !== "required_food" || !rule.required_food_id) return true;
+    return items.some((item) => item.food_id === rule.required_food_id);
+  });
+}
+
+function isSnackProtein(food: Food) {
+  const name = food.name.toLowerCase();
+  return (
+    food.category === "protein" &&
+    (name.includes("yogurt") ||
+      name.includes("oikos") ||
+      name.includes("cottage") ||
+      name.includes("shake") ||
+      name.includes("protein") ||
+      name.includes("egg"))
+  );
+}
+
+function isFoodSetCompatible(slot: MealSlot, foods: Food[]) {
+  const proteinFoods = foods.filter((food) => food.category === "protein");
+  const carbFoods = foods.filter((food) => food.category === "carb");
+  if (proteinFoods.length > 1 || carbFoods.length > 1) return false;
+
+  const protein = proteinFoods[0];
+  const fat = foods.find((food) => food.category === "fat");
+  const fruit = foods.find((food) => food.category === "fruit");
+  const names = foods.map((food) => food.name.toLowerCase()).join(" ");
+  if (names.includes("egg white") && names.includes("egg") && !names.includes("egg white")) {
+    return false;
+  }
+  if (!protein) return false;
+
+  const proteinName = protein.name.toLowerCase();
+  const fatName = fat?.name.toLowerCase() || "";
+  const hasSeafood =
+    proteinName.includes("tuna") ||
+    proteinName.includes("tilapia") ||
+    proteinName.includes("salmon") ||
+    proteinName.includes("fish") ||
+    proteinName.includes("shrimp");
+  const hasSavoryMeat =
+    hasSeafood ||
+    proteinName.includes("chicken") ||
+    proteinName.includes("turkey") ||
+    proteinName.includes("beef");
+  const hasNutButter =
+    fatName.includes("peanut") ||
+    fatName.includes("almond") ||
+    fatName.includes("cashew") ||
+    fatName.includes("nut butter");
+
+  if (hasSeafood && hasNutButter) return false;
+  if ((slot === "snack_1" || slot === "snack_2") && hasSavoryMeat && fruit) {
+    return false;
+  }
+
+  return true;
+}
+
+function formatSlotName(slot: MealSlot) {
+  return plannerSlots.find((entry) => entry.key === slot)?.label || slot;
 }
 
 
@@ -453,7 +754,16 @@ function tuneWholeDay(
   rules: MealRule[]
 ) {
   const foodById = new Map(foods.map((food) => [food.id, food]));
-  const meals = selections.map((selection) => selection.items.map((item) => ({ ...item })));
+  const meals = selections.map((selection) =>
+    selection.items.map((item) => {
+      const food = foodById.get(item.food_id);
+      return {
+        ...item,
+        amount: Number(item.amount),
+        amount_mode: food ? inferAmountMode(food, Number(item.amount), item.amount_mode) : item.amount_mode,
+      };
+    })
+  );
 
   for (let iteration = 0; iteration < 180; iteration += 1) {
     const current = totalForMeals(meals, foodById);
@@ -466,11 +776,11 @@ function tuneWholeDay(
         const item = meals[mealIndex][itemIndex];
         const food = foodById.get(item.food_id);
         if (!food) continue;
-        const itemAmountMode = item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving");
+        const itemAmountMode = inferAmountMode(food, item.amount, item.amount_mode);
         const step = itemAmountMode === "grams" ? 5 : 0.25;
         for (const direction of [-1, 1]) {
           const candidateAmount = Math.max(
-            minimumAmountForFood(food, itemAmountMode),
+            minimumFoodAmount(food, itemAmountMode),
             roundAmount(item.amount + step * direction, step)
           );
           if (
@@ -491,7 +801,8 @@ function tuneWholeDay(
             food.category === "protein" &&
             (selections[mealIndex].template.meal_slot === "lunch" ||
               selections[mealIndex].template.meal_slot === "dinner") &&
-            candidateAmount < 100
+            amountToGramEquivalent(food, candidateAmount, itemAmountMode) !== null &&
+            Number(amountToGramEquivalent(food, candidateAmount, itemAmountMode)) < 90
           ) {
             continue;
           }
@@ -541,9 +852,12 @@ function isAmountAllowed(
   food: Food,
   rules: MealRule[]
 ) {
-  if (food.max_amount != null && amount > food.max_amount) {
+  const amountMode = inferAmountMode(food, amount, item.amount_mode);
+  const maximum = maximumAmountForFood(food, amountMode);
+  if (amount > maximum + 0.001) {
     return false;
   }
+  const gramEquivalent = amountToGramEquivalent(food, amount, amountMode);
   return rules.every((rule) => {
     if (rule.rule_type === "exact_food_amount" && rule.required_food_id === item.food_id) {
       return amount === Number(rule.amount || 0);
@@ -552,17 +866,11 @@ function isAmountAllowed(
       rule.rule_type === "minimum_category_amount" &&
       rule.target_category === food.category
     ) {
-      return amount >= Number(rule.amount || 0);
+      const requiredAmount = Number(rule.amount || 0);
+      return gramEquivalent != null
+        ? gramEquivalent >= requiredAmount || amount >= requiredAmount
+        : amount >= requiredAmount;
     }
     return true;
   });
-}
-
-function minimumAmountForFood(food: Food, amountMode?: "serving" | "grams" | null) {
-  const mode = amountMode || (food.serving_mode === "grams" ? "grams" : "serving");
-  if (mode === "serving") return 0.25;
-  if (food.category === "protein") return 50;
-  if (food.category === "carb") return 30;
-  if (food.category === "fat") return 5;
-  return 10;
 }
