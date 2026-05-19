@@ -5,6 +5,7 @@ import { CheckCircle2, ChevronDown, ChevronUp, Plus, RefreshCw, Save, Shuffle, T
 import { createClient } from "@/lib/supabase/client";
 import {
   buildPlanningOptions,
+  buildTemplateOptions,
   chooseOptimizedDayPlan,
   getSlotOptions,
   planRemainingMealsByBudget,
@@ -54,7 +55,7 @@ export default function CalculatorPage() {
   const [manualAmount, setManualAmount] = useState(1);
   const [manualAmountMode, setManualAmountMode] = useState<"serving" | "grams">("serving");
   const [displayAmountMode, setDisplayAmountMode] = useState<"serving" | "grams">("serving");
-  const [openMealSlot, setOpenMealSlot] = useState<MealSlot>("breakfast");
+  const [openMealSlot, setOpenMealSlot] = useState<MealSlot | null>("breakfast");
   const [freeDay, setFreeDay] = useState(false);
   const [noRecalculate, setNoRecalculate] = useState(false);
   const [showManualAdd, setShowManualAdd] = useState(false);
@@ -194,6 +195,10 @@ export default function CalculatorPage() {
         ? buildPlanningOptions(selectedProfile, templates, templateItems, visibleFoods, rules)
         : [],
     [selectedProfile, templates, templateItems, visibleFoods, rules]
+  );
+  const savedOptions = useMemo(
+    () => buildTemplateOptions(templates, templateItems, visibleFoods),
+    [templates, templateItems, visibleFoods]
   );
   const selectedFoods = useMemo<SelectedFood[]>(
     () =>
@@ -364,11 +369,22 @@ export default function CalculatorPage() {
     await replaceMeal(slot, next);
   }
 
-  async function updateItemAmount(itemId: string, amount: number) {
-    await createClient().from("daily_plan_items").update({ amount }).eq("id", itemId);
+  async function updateItemAmount(
+    itemId: string,
+    amount: number,
+    amountMode?: "serving" | "grams"
+  ) {
+    await createClient()
+      .from("daily_plan_items")
+      .update(amountMode ? { amount, amount_mode: amountMode } : { amount })
+      .eq("id", itemId);
     const nextMeals = meals.map((meal) => ({
         ...meal,
-        items: meal.items.map((item) => (item.id === itemId ? { ...item, amount } : item)),
+        items: meal.items.map((item) =>
+          item.id === itemId
+            ? { ...item, amount, amount_mode: amountMode || item.amount_mode }
+            : item
+        ),
       }));
     setMeals(nextMeals);
 
@@ -389,12 +405,21 @@ export default function CalculatorPage() {
     if (!changedMeal || !changedItem) return;
 
     const food = visibleFoods.find((candidate) => candidate.id === changedItem.food_id);
+    if (!food) return;
+    const currentAmount = Number(changedItem.amount);
+    const currentAmountMode = inferAmountMode(food, currentAmount, changedItem.amount_mode);
     const nextAmount =
-      amountMode === "grams" && food
-        ? Number(food.base_grams || changedItem.amount)
-        : amountMode === "serving"
-          ? 1
-          : changedItem.amount;
+      amountMode === "grams"
+        ? currentAmountMode === "grams"
+          ? currentAmount
+          : food.base_grams
+            ? currentAmount * Number(food.base_grams)
+            : currentAmount
+        : currentAmountMode === "serving"
+          ? currentAmount
+          : food.base_grams
+            ? currentAmount / Number(food.base_grams)
+            : currentAmount;
 
     await createClient()
       .from("daily_plan_items")
@@ -414,10 +439,21 @@ export default function CalculatorPage() {
   }
 
   function formatItemAmount(item: DailyPlanItem, food: Food) {
+    const displayAmount = getDisplayItemAmount(item, food, displayAmountMode);
+    return displayAmount.amountMode === "grams"
+      ? `${roundQuantity(displayAmount.amount)} g`
+      : `${roundQuantity(displayAmount.amount)} x ${food.serving_label}`;
+  }
+
+  function getDisplayItemAmount(
+    item: DailyPlanItem,
+    food: Food,
+    requestedMode: "serving" | "grams"
+  ) {
     const amountMode = inferAmountMode(food, Number(item.amount), item.amount_mode);
     const amount = Number(item.amount);
 
-    if (displayAmountMode === "grams") {
+    if (requestedMode === "grams") {
       const grams =
         amountMode === "grams"
           ? amount
@@ -425,7 +461,9 @@ export default function CalculatorPage() {
             ? amount * Number(food.base_grams)
             : null;
 
-      if (grams != null) return `${roundQuantity(grams)} g`;
+      if (grams != null) {
+        return { amount: roundQuantityNumber(grams), amountMode: "grams" as const };
+      }
     }
 
     const servings =
@@ -435,8 +473,11 @@ export default function CalculatorPage() {
           ? amount / Number(food.base_grams)
           : null;
 
-    if (servings != null) return `${roundQuantity(servings)} x ${food.serving_label}`;
-    return `${roundQuantity(amount)} g`;
+    if (servings != null) {
+      return { amount: roundQuantityNumber(servings), amountMode: "serving" as const };
+    }
+
+    return { amount: roundQuantityNumber(amount), amountMode };
   }
 
   async function toggleItemCompleted(itemId: string, completed: boolean) {
@@ -922,7 +963,7 @@ export default function CalculatorPage() {
           <div className="space-y-4">
             {plannerSlots.map((slot) => {
               const meal = meals.find((candidate) => candidate.meal_slot === slot.key);
-              const slotOptions = getSlotOptions(options, slot.key, rules);
+              const slotOptions = getSlotOptions(savedOptions, slot.key, rules);
               const selectedOptionValue =
                 meal?.meal_template_id ||
                 slotOptions.find((option) => option.template.name === meal?.meal_name)?.template.id ||
@@ -932,7 +973,9 @@ export default function CalculatorPage() {
                   <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-3">
                     <button
                       type="button"
-                      onClick={() => setOpenMealSlot(slot.key)}
+                      onClick={() =>
+                        setOpenMealSlot((current) => (current === slot.key ? null : slot.key))
+                      }
                       className="min-w-0 text-left"
                     >
                       <h2 className="text-xl font-semibold">{slot.label}</h2>
@@ -963,7 +1006,7 @@ export default function CalculatorPage() {
                       {meal.items.map((item) => {
               const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
                         if (!food) return null;
-              const itemAmountMode = inferAmountMode(food, Number(item.amount), item.amount_mode);
+              const displayAmount = getDisplayItemAmount(item, food, displayAmountMode);
               const swapCandidates = visibleFoods.filter(
                           (candidate) =>
                             candidate.category === food.category &&
@@ -1005,10 +1048,10 @@ export default function CalculatorPage() {
                                 </select>
                               )}
                               {swapCandidates.length === 0 && <div />}
-                              <input className="w-24 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" type="number" min="0" step={itemAmountMode === "grams" ? "5" : "0.25"} value={item.amount} onChange={(event) => updateItemAmount(item.id, Number(event.target.value))} />
+                              <input className="w-24 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" type="number" min="0" step={displayAmount.amountMode === "grams" ? "5" : "0.25"} value={displayAmount.amount} onChange={(event) => updateItemAmount(item.id, Number(event.target.value), displayAmount.amountMode)} />
                               <select
                                 className="w-24 rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-sm text-white"
-                                value={itemAmountMode}
+                                value={displayAmount.amountMode}
                                 onChange={(event) =>
                                   updateItemAmountMode(item.id, event.target.value as "serving" | "grams")
                                 }
@@ -1067,6 +1110,10 @@ function roundQuantity(value: number) {
   return Number(value.toFixed(2)).toString();
 }
 
+function roundQuantityNumber(value: number) {
+  return Number(value.toFixed(2));
+}
+
 function MealOptionSelect({
   value,
   options,
@@ -1079,7 +1126,7 @@ function MealOptionSelect({
   const selected = options.find((option) => option.template.id === value);
 
   return (
-    <label className="relative block min-w-0 w-full md:w-auto md:min-w-64">
+    <label className="relative col-span-2 block min-w-0 w-full md:col-span-1 md:w-auto md:min-w-64">
       <span className="pointer-events-none flex min-h-11 items-center rounded-xl border border-white/10 bg-white/5 px-3 py-2 pr-9 text-sm text-white">
         <span className="line-clamp-2 break-words">{selected?.template.name || "Choose meal"}</span>
       </span>
@@ -1090,6 +1137,9 @@ function MealOptionSelect({
         onChange={(event) => onChange(event.target.value)}
         aria-label="Choose meal"
       >
+        <option value="" disabled>
+          {options.length > 0 ? "Choose saved meal" : "No saved meals"}
+        </option>
         {options.map((option) => (
           <option key={option.template.id} value={option.template.id}>
             {option.template.name}
