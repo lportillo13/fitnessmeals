@@ -148,8 +148,7 @@ export function chooseOptimizedDayPlan(
     const dailyDefault = candidates.find(
       (option) =>
         option.template.is_default_daily &&
-        (option.template.meal_slot === slot.key ||
-          (slot.key === "snack_2" && option.template.meal_slot === "snack_1"))
+        option.template.meal_slot === slot.key
     );
     return {
       slot: slot.key,
