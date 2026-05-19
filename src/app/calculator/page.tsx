@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronDown, ChevronUp, Plus, RefreshCw, Save, Shuffle, Trash2 } from "lucide-react";
+import { ArrowLeftRight, CheckCircle2, ChevronDown, ChevronUp, Plus, RefreshCw, Save, Shuffle, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   buildPlanningOptions,
@@ -59,6 +59,7 @@ export default function CalculatorPage() {
   const [freeDay, setFreeDay] = useState(false);
   const [noRecalculate, setNoRecalculate] = useState(false);
   const [showManualAdd, setShowManualAdd] = useState(false);
+  const [saveMealDraft, setSaveMealDraft] = useState<{ meal: PlannedMeal; name: string } | null>(null);
   const [motivation, setMotivation] = useState<{ message: string; tone: MotivationTone } | null>(null);
   const visibleFoods = useMemo(
     () =>
@@ -680,10 +681,15 @@ export default function CalculatorPage() {
     }
   }
 
-  async function savePlannedMealAsTemplate(meal: PlannedMeal) {
+  async function savePlannedMealAsTemplate(meal: PlannedMeal, mealName = meal.meal_name) {
     if (!selectedProfile) return;
     if (meal.items.length === 0) {
       setMessage("Add at least one food before saving this meal.");
+      return;
+    }
+    const trimmedMealName = mealName.trim();
+    if (!trimmedMealName) {
+      setMessage("Add a meal name before saving this meal.");
       return;
     }
 
@@ -692,7 +698,7 @@ export default function CalculatorPage() {
       .from("meal_templates")
       .insert({
         profile_id: selectedProfile.id,
-        name: meal.meal_name,
+        name: trimmedMealName,
         meal_slot: meal.meal_slot,
       })
       .select("*")
@@ -724,7 +730,17 @@ export default function CalculatorPage() {
 
     setTemplates((current) => [...current, template as MealTemplate]);
     setTemplateItems((current) => [...current, ...((createdItems || []) as MealTemplateItem[])]);
-    setMessage(`${meal.meal_name} saved to your meal library.`);
+    setMessage(`${trimmedMealName} saved to your meal library.`);
+  }
+
+  async function confirmSaveMealAsTemplate() {
+    if (!saveMealDraft) return;
+    if (!saveMealDraft.name.trim()) {
+      setMessage("Add a meal name before saving this meal.");
+      return;
+    }
+    await savePlannedMealAsTemplate(saveMealDraft.meal, saveMealDraft.name);
+    setSaveMealDraft(null);
   }
 
   async function removeItem(itemId: string) {
@@ -994,7 +1010,7 @@ export default function CalculatorPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => savePlannedMealAsTemplate(meal)}
+                          onClick={() => setSaveMealDraft({ meal, name: meal.meal_name })}
                           className="inline-flex h-11 w-11 min-w-0 items-center justify-center rounded-xl bg-white/6 text-sm"
                           aria-label={`Save ${slot.label} meal`}
                           title="Save meal"
@@ -1031,7 +1047,7 @@ export default function CalculatorPage() {
                             ["carb", "protein", "fat"].includes(food.category)
                         );
                         return (
-                          <div key={item.id} className="surface-strong grid gap-3 rounded-2xl p-3 lg:grid-cols-[minmax(210px,1fr)_minmax(170px,260px)_86px_96px_40px] lg:items-center">
+                          <div key={item.id} className="surface-strong grid gap-3 rounded-2xl p-3 lg:grid-cols-[minmax(210px,1fr)_40px_86px_96px_40px] lg:items-center">
                             <div className="flex min-w-0 items-start gap-3">
                               <input
                                 className="mt-1 shrink-0"
@@ -1047,20 +1063,11 @@ export default function CalculatorPage() {
                               </div>
                             </div>
                             {swapCandidates.length > 0 ? (
-                              <select
-                                className="min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
-                                defaultValue=""
-                                onChange={(event) => {
-                                  if (event.target.value) void swapItemFood(item, event.target.value);
-                                }}
-                              >
-                                <option value="">Swap {food.category}</option>
-                                {swapCandidates.map((candidate) => (
-                                  <option key={candidate.id} value={candidate.id}>
-                                    {candidate.name}
-                                  </option>
-                                ))}
-                              </select>
+                              <ItemSwapSelect
+                                category={food.category}
+                                candidates={swapCandidates}
+                                onChange={(foodId) => swapItemFood(item, foodId)}
+                              />
                             ) : (
                               <div className="hidden lg:block" />
                             )}
@@ -1108,6 +1115,16 @@ export default function CalculatorPage() {
           onClose={() => setMotivation(null)}
         />
       )}
+      {saveMealDraft && (
+        <SaveMealModal
+          name={saveMealDraft.name}
+          onNameChange={(name) =>
+            setSaveMealDraft((current) => (current ? { ...current, name } : current))
+          }
+          onCancel={() => setSaveMealDraft(null)}
+          onSave={() => void confirmSaveMealAsTemplate()}
+        />
+      )}
     </main>
   );
 }
@@ -1127,6 +1144,91 @@ function roundQuantity(value: number) {
 
 function roundQuantityNumber(value: number) {
   return Number(value.toFixed(2));
+}
+
+function ItemSwapSelect({
+  category,
+  candidates,
+  onChange,
+}: {
+  category: Food["category"];
+  candidates: Food[];
+  onChange: (foodId: string) => void;
+}) {
+  return (
+    <label className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/6">
+      <ArrowLeftRight className="h-4 w-4" />
+      <select
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        defaultValue=""
+        onChange={(event) => {
+          if (event.target.value) onChange(event.target.value);
+          event.target.value = "";
+        }}
+        aria-label={`Swap ${category}`}
+        title={`Swap ${category}`}
+      >
+        <option value="" disabled>
+          Swap {category}
+        </option>
+        {candidates.map((candidate) => (
+          <option key={candidate.id} value={candidate.id}>
+            {candidate.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function SaveMealModal({
+  name,
+  onNameChange,
+  onCancel,
+  onSave,
+}: {
+  name: string;
+  onNameChange: (name: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
+      <form
+        className="surface w-full max-w-md rounded-3xl p-6"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSave();
+        }}
+      >
+        <h2 className="text-2xl font-bold">Save meal</h2>
+        <label className="mt-4 block">
+          <span className="text-sm font-medium">Meal name</span>
+          <input
+            className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+            value={name}
+            onChange={(event) => onNameChange(event.target.value)}
+            autoFocus
+          />
+        </label>
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-2xl bg-white/8 px-5 py-3 font-semibold"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black"
+          >
+            Save
+          </button>
+        </div>
+      </form>
+    </div>
+  );
 }
 
 function MealOptionSelect({
