@@ -231,9 +231,9 @@ export default function ProfilePage() {
           .order("name"),
         Promise.resolve({ data: updatedProfile }),
       ]);
-      const foods = foodData || [];
+      const foods = (foodData || []).filter((food) => food.category !== "drink");
       if (foods.length === 0) {
-        setMessage("Mark at least one food as available before generating a plan.");
+        setMessage("Mark at least one non-drink food as available before generating a plan.");
         setGenerationState("idle");
         return;
       }

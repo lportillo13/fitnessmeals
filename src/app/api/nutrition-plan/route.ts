@@ -92,9 +92,10 @@ export async function POST(request: Request) {
     }
 
     const { profile, foods, goal_instruction, meal_slot, count } = parsed.data;
-    const allowedFoodIds = new Set(foods.map((food) => food.id));
+    const planningFoods = foods.filter((food) => food.category !== "drink");
+    const allowedFoodIds = new Set(planningFoods.map((food) => food.id));
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const slotFoods = foods.filter((food) => food.allowed_meal_slots.includes(meal_slot));
+    const slotFoods = planningFoods.filter((food) => food.allowed_meal_slots.includes(meal_slot));
     const response = await client.responses.create({
       model: process.env.OPENAI_MEAL_MODEL || "gpt-5-mini",
       input: [
@@ -109,7 +110,7 @@ export async function POST(request: Request) {
             instruction: goal_instruction,
             profile,
             foods: slotFoods,
-            required_output: `Create exactly ${count} varied, realistic meals. Every meal must use meal_slot ${meal_slot}. Use only available foods allowed for that meal slot. Never use tiny gram quantities: proteins must be at least 50 g, carbs at least 30 g, fats at least 5 g, and other gram foods at least 10 g. Use at most one carb food per meal. For lunch and dinner, total protein-food quantity must be between 100 and 150 grams. Quantities should help the whole day fit the macro targets.`,
+            required_output: `Create exactly ${count} varied, realistic meals. Every meal must use meal_slot ${meal_slot}. Use only available foods allowed for that meal slot. Do not include drinks; drinks are added manually by the user. Never use tiny gram quantities: proteins must be at least 50 g, carbs at least 30 g, fats at least 5 g, and other gram foods at least 10 g. Use at most one carb food per meal. For lunch and dinner, total protein-food quantity must be between 100 and 150 grams. Quantities should help the whole day fit the macro targets.`,
           }),
         },
       ],
@@ -134,7 +135,7 @@ export async function POST(request: Request) {
 
     const meals = (JSON.parse(response.output_text) as { meals: GeneratedMeal[] }).meals;
 
-    const foodById = new Map(foods.map((food) => [food.id, food]));
+    const foodById = new Map(planningFoods.map((food) => [food.id, food]));
     const usesOnlyAllowedFoods = meals.every((meal) =>
       meal.items.every(
         (item) =>
