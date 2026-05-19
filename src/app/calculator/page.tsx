@@ -847,7 +847,7 @@ export default function CalculatorPage() {
           <p className="eyebrow mb-2 text-xs font-semibold">Daily planner</p>
           <h1 className="mb-4 text-4xl font-bold">Today&apos;s Meal Plan</h1>
 
-          <div className="surface mb-4 rounded-3xl p-5">
+          <div className="surface relative z-40 mb-4 rounded-3xl p-5">
             <div className="flex flex-wrap gap-3">
               <button onClick={generatePlan} className="inline-flex items-center gap-2 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black">
                 <RefreshCw className="h-4 w-4" /> {plan ? "Redesign meal plan" : "Create meal plan"}
@@ -919,7 +919,7 @@ export default function CalculatorPage() {
               <div className="relative">
                 <input className="w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white" placeholder="Search food" value={foodSearch} onChange={(event) => { setFoodSearch(event.target.value); setManualFoodId(""); }} />
                 {foodSearch && !manualFoodId && matchingFoods.length > 0 && (
-                  <div className="surface absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-2xl">
+                  <div className="surface absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl shadow-2xl">
                     {matchingFoods.map((food) => (
                       <button key={food.id} onClick={() => { setManualFoodId(food.id); setFoodSearch(food.name); setManualAmountMode(food.serving_mode === "grams" ? "grams" : "serving"); setManualAmount(food.serving_mode === "grams" ? Number(food.base_grams || 100) : 1); }} className="flex w-full justify-between px-4 py-3 text-left text-sm hover:bg-white/8">
                         <span>{food.name}</span><span className="muted">{food.serving_label}</span>
@@ -1015,8 +1015,8 @@ export default function CalculatorPage() {
                             ["carb", "protein", "fat"].includes(food.category)
                         );
                         return (
-                          <div key={item.id} className="surface-strong grid gap-3 rounded-2xl p-3 md:grid-cols-[1fr_auto] md:items-center">
-                            <div className="flex min-w-0 items-start gap-3">
+                          <div key={item.id} className="surface-strong flex flex-col gap-3 rounded-2xl p-3 xl:flex-row xl:items-center xl:justify-between">
+                            <div className="flex min-w-0 flex-1 items-start gap-3 xl:min-w-72">
                               <input
                                 className="mt-1 shrink-0"
                                 type="checkbox"
@@ -1024,13 +1024,13 @@ export default function CalculatorPage() {
                                 onChange={(event) => toggleItemCompleted(item.id, event.target.checked)}
                               />
                               <div className="min-w-0">
-      <div className="break-words font-medium">{food.name}</div>
-      <div className="muted text-sm">
-        {formatItemAmount(item, food)}
-      </div>
+                                <div className="whitespace-normal break-words font-medium leading-snug">
+                                  {food.name}
+                                </div>
+                                <div className="muted text-sm">{formatItemAmount(item, food)}</div>
                               </div>
                             </div>
-                            <div className="grid min-w-0 grid-cols-[1fr_96px_96px_auto] items-center gap-2">
+                            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_96px_96px_auto] items-center gap-2 sm:grid-cols-[minmax(180px,1fr)_96px_96px_auto] xl:w-[min(100%,620px)] xl:shrink-0">
                               {swapCandidates.length > 0 && (
                                 <select
                                   className="min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
