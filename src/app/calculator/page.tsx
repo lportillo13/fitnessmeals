@@ -1015,8 +1015,8 @@ export default function CalculatorPage() {
                             ["carb", "protein", "fat"].includes(food.category)
                         );
                         return (
-                          <div key={item.id} className="surface-strong flex flex-col gap-3 rounded-2xl p-3 xl:flex-row xl:items-center xl:justify-between">
-                            <div className="flex min-w-0 flex-1 items-start gap-3 xl:min-w-72">
+                          <div key={item.id} className="surface-strong grid gap-3 rounded-2xl p-3 lg:grid-cols-[minmax(210px,1fr)_minmax(170px,260px)_86px_96px_40px] lg:items-center">
+                            <div className="flex min-w-0 items-start gap-3">
                               <input
                                 className="mt-1 shrink-0"
                                 type="checkbox"
@@ -1030,37 +1030,36 @@ export default function CalculatorPage() {
                                 <div className="muted text-sm">{formatItemAmount(item, food)}</div>
                               </div>
                             </div>
-                            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_96px_96px_auto] items-center gap-2 sm:grid-cols-[minmax(180px,1fr)_96px_96px_auto] xl:w-[min(100%,620px)] xl:shrink-0">
-                              {swapCandidates.length > 0 && (
-                                <select
-                                  className="min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
-                                  defaultValue=""
-                                  onChange={(event) => {
-                                    if (event.target.value) void swapItemFood(item, event.target.value);
-                                  }}
-                                >
-                                  <option value="">Swap {food.category}</option>
-                                  {swapCandidates.map((candidate) => (
-                                    <option key={candidate.id} value={candidate.id}>
-                                      {candidate.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              )}
-                              {swapCandidates.length === 0 && <div />}
-                              <input className="w-24 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" type="number" min="0" step={displayAmount.amountMode === "grams" ? "5" : "0.25"} value={displayAmount.amount} onChange={(event) => updateItemAmount(item.id, Number(event.target.value), displayAmount.amountMode)} />
+                            {swapCandidates.length > 0 ? (
                               <select
-                                className="w-24 rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-sm text-white"
-                                value={displayAmount.amountMode}
-                                onChange={(event) =>
-                                  updateItemAmountMode(item.id, event.target.value as "serving" | "grams")
-                                }
+                                className="min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                                defaultValue=""
+                                onChange={(event) => {
+                                  if (event.target.value) void swapItemFood(item, event.target.value);
+                                }}
                               >
-                                <option value="grams" disabled={!food.base_grams}>Grams</option>
-                                <option value="serving">Serving</option>
+                                <option value="">Swap {food.category}</option>
+                                {swapCandidates.map((candidate) => (
+                                  <option key={candidate.id} value={candidate.id}>
+                                    {candidate.name}
+                                  </option>
+                                ))}
                               </select>
-                              <button onClick={() => removeItem(item.id)} className="rounded-xl bg-white/6 p-2"><Trash2 className="h-4 w-4" /></button>
-                            </div>
+                            ) : (
+                              <div className="hidden lg:block" />
+                            )}
+                            <input className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" type="number" min="0" step={displayAmount.amountMode === "grams" ? "5" : "0.25"} value={displayAmount.amount} onChange={(event) => updateItemAmount(item.id, Number(event.target.value), displayAmount.amountMode)} />
+                            <select
+                              className="w-full rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-sm text-white"
+                              value={displayAmount.amountMode}
+                              onChange={(event) =>
+                                updateItemAmountMode(item.id, event.target.value as "serving" | "grams")
+                              }
+                            >
+                              <option value="grams" disabled={!food.base_grams}>Grams</option>
+                              <option value="serving">Serving</option>
+                            </select>
+                            <button onClick={() => removeItem(item.id)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/6"><Trash2 className="h-4 w-4" /></button>
                           </div>
                         );
                       })}
