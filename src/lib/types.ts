@@ -67,6 +67,7 @@ export type MealTemplate = {
   name: string;
   meal_slot: MealSlot | null;
   is_default_daily: boolean;
+  no_rebalance: boolean;
 };
 
 export type MealTemplateItem = {

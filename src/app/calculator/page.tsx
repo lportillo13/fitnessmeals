@@ -254,7 +254,7 @@ export default function CalculatorPage() {
         ? null
         : entry.selected!.template.id,
       meal_name: entry.selected!.template.name,
-      no_rebalance: false,
+      no_rebalance: entry.selected!.template.no_rebalance || false,
     }));
     const { data: createdMeals } = await supabase
       .from("daily_plan_meals")
@@ -296,7 +296,7 @@ export default function CalculatorPage() {
         meal_template_id: option.template.id.startsWith("synthetic-") ? null : option.template.id,
         meal_name: option.template.name,
         completed: false,
-        no_rebalance: meal.no_rebalance,
+        no_rebalance: option.template.no_rebalance || false,
       })
       .eq("id", meal.id)
       .select("*")
@@ -331,7 +331,7 @@ export default function CalculatorPage() {
             meal_template_id: option.template.id,
             meal_name: option.template.name,
             completed: false,
-            no_rebalance: meal.no_rebalance,
+            no_rebalance: option.template.no_rebalance || false,
             items: option.items.map((item) => ({
               id: item.id,
               daily_plan_meal_id: meal.id,
@@ -526,18 +526,6 @@ export default function CalculatorPage() {
     }
   }
 
-  async function toggleMealNoRebalance(mealId: string, noRebalance: boolean) {
-    await createClient()
-      .from("daily_plan_meals")
-      .update({ no_rebalance: noRebalance })
-      .eq("id", mealId);
-    setMeals((current) =>
-      current.map((meal) =>
-        meal.id === mealId ? { ...meal, no_rebalance: noRebalance } : meal
-      )
-    );
-  }
-
   async function addManualFood() {
     if (!manualFoodId || !selectedProfile) return;
     const supabase = createClient();
@@ -679,7 +667,7 @@ export default function CalculatorPage() {
         meal_template_id: template.id.startsWith("synthetic-") ? null : template.id,
         meal_name: template.name,
         completed: false,
-        no_rebalance: meal.no_rebalance,
+        no_rebalance: template.no_rebalance || false,
       })
       .eq("id", meal.id)
       .select("*")
@@ -849,10 +837,6 @@ export default function CalculatorPage() {
                         <label className="col-span-2 inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm md:col-span-1">
                           <input type="checkbox" checked={meal.completed} onChange={(event) => toggleCompleted(meal.id, event.target.checked)} />
                           <CheckCircle2 className="h-4 w-4" />Completed
-                        </label>
-                        <label className="col-span-2 inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm md:col-span-1">
-                          <input type="checkbox" checked={meal.no_rebalance} onChange={(event) => toggleMealNoRebalance(meal.id, event.target.checked)} />
-                          No rebalance
                         </label>
                       </div>
                     )}

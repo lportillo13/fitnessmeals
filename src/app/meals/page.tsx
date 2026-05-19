@@ -272,6 +272,27 @@ export default function MealsPage() {
     );
   }
 
+  async function toggleNoRebalance(template: MealTemplate) {
+    const nextValue = !template.no_rebalance;
+    const { error } = await createClient()
+      .from("meal_templates")
+      .update({ no_rebalance: nextValue })
+      .eq("id", template.id);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    await createClient()
+      .from("daily_plan_meals")
+      .update({ no_rebalance: nextValue })
+      .eq("meal_template_id", template.id);
+    setTemplates((current) =>
+      current.map((entry) =>
+        entry.id === template.id ? { ...entry, no_rebalance: nextValue } : entry
+      )
+    );
+  }
+
   const visibleTemplates = templates.filter((template) => {
     const matchesSlot = mealSlotFilter === "all" || template.meal_slot === mealSlotFilter;
     const matchesSearch = template.name.toLowerCase().includes(mealSearch.toLowerCase());
@@ -457,6 +478,14 @@ export default function MealsPage() {
                           onChange={() => toggleDefaultDaily(template)}
                         />
                         Default daily
+                      </label>
+                      <label className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={template.no_rebalance}
+                          onChange={() => toggleNoRebalance(template)}
+                        />
+                        No rebalance
                       </label>
                       <button onClick={() => deleteTemplate(template.id)} className="rounded-xl bg-white/6 p-2">
                         <Trash2 className="h-4 w-4" />

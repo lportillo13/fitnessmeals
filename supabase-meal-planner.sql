@@ -9,7 +9,8 @@ alter table public.foods
 alter table public.meal_templates
   add column if not exists meal_slot text
   check (meal_slot in ('breakfast', 'snack_1', 'lunch', 'snack_2', 'dinner')),
-  add column if not exists is_default_daily boolean not null default false;
+  add column if not exists is_default_daily boolean not null default false,
+  add column if not exists no_rebalance boolean not null default false;
 
 alter table public.meal_template_items
   add column if not exists amount_mode text
