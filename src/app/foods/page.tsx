@@ -87,6 +87,9 @@ export default function FoodsPage() {
     protein: true,
     carb: true,
     fat: true,
+    fruit: true,
+    snack: true,
+    drink: true,
     other: true,
   });
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -559,9 +562,10 @@ export default function FoodsPage() {
     protein: filteredFoods.filter((food) => food.category === "protein"),
     carb: filteredFoods.filter((food) => food.category === "carb"),
     fat: filteredFoods.filter((food) => food.category === "fat"),
-    other: filteredFoods.filter(
-      (food) => !["protein", "carb", "fat"].includes(food.category)
-    ),
+    fruit: filteredFoods.filter((food) => food.category === "fruit"),
+    snack: filteredFoods.filter((food) => food.category === "snack"),
+    drink: filteredFoods.filter((food) => food.category === "drink"),
+    other: filteredFoods.filter((food) => food.category === "other"),
   };
 
   return (
@@ -758,7 +762,7 @@ export default function FoodsPage() {
                   {categoryFoods.map((food) => (
                     <div key={food.id} className="surface-strong flex items-center justify-between gap-3 rounded-2xl p-3">
                       <div className="flex min-w-0 items-center gap-2 font-medium">
-                        <FoodGoalDot food={food} profile={selectedProfile} />
+                        <FoodGoalDot food={food} />
                         <span className="truncate">{food.name}</span>
                       </div>
                       <div className="flex gap-2">
@@ -817,7 +821,7 @@ export default function FoodsPage() {
                   <tr key={food.id} className="border-t border-white/8">
                     <td className="p-3 font-medium">
                       <div className="flex items-center gap-2">
-                        <FoodGoalDot food={food} profile={selectedProfile} />
+                        <FoodGoalDot food={food} />
                         <span>{food.name}</span>
                       </div>
                     </td>
@@ -1049,8 +1053,8 @@ function ModalNumber({ label, value, onChange }: { label: string; value: number;
   );
 }
 
-function FoodGoalDot({ food, profile }: { food: Food; profile?: Profile }) {
-  const rating = rateFoodForGoals(food, profile);
+function FoodGoalDot({ food }: { food: Food }) {
+  const rating = rateFoodForGoals(food);
   const config: Record<FoodGoalRating, { label: string; className: string }> = {
     great: {
       label: "Great food for your goals",
@@ -1075,36 +1079,62 @@ function FoodGoalDot({ food, profile }: { food: Food; profile?: Profile }) {
   );
 }
 
-function rateFoodForGoals(food: Food, profile?: Profile): FoodGoalRating {
+function rateFoodForGoals(food: Food): FoodGoalRating {
   const calories = Math.max(food.calories, food.protein_g * 4 + food.carbs_g * 4 + food.fat_g * 9, 1);
-  const targetCalories = profile?.calorie_target || 0;
-  const targetProteinCalories = (profile?.protein_target || 0) * 4;
-  const targetCarbCalories = (profile?.carbs_target || 0) * 4;
-  const targetFatCalories = (profile?.fat_target || 0) * 9;
-  const targetMacroCalories =
-    targetProteinCalories + targetCarbCalories + targetFatCalories;
-  const goalCalories = targetCalories || targetMacroCalories || 1;
-  const proteinTargetShare = targetProteinCalories / goalCalories || 0.35;
-  const carbTargetShare = targetCarbCalories / goalCalories || 0.4;
-  const fatTargetShare = targetFatCalories / goalCalories || 0.25;
   const proteinShare = (food.protein_g * 4) / calories;
   const carbShare = (food.carbs_g * 4) / calories;
   const fatShare = (food.fat_g * 9) / calories;
   const proteinPer100Calories = (food.protein_g / calories) * 100;
   const fiberPer100Calories = (food.fiber_g / calories) * 100;
-  const macroFit =
-    Math.abs(proteinShare - proteinTargetShare) * 90 +
-    Math.abs(carbShare - carbTargetShare) * 45 +
-    Math.abs(fatShare - fatTargetShare) * 45;
-  const proteinBonus = Math.min(proteinPer100Calories / 8, 1) * 28;
-  const fiberBonus = Math.min(fiberPer100Calories / 4, 1) * 12;
-  const lowValuePenalty =
-    calories >= 150 && proteinPer100Calories < 5 && fiberPer100Calories < 2 ? 18 : 0;
-  const snackPenalty = food.category === "snack" || food.category === "drink" ? 8 : 0;
-  const score = 100 - macroFit + proteinBonus + fiberBonus - lowValuePenalty - snackPenalty;
 
-  if (score >= 80) return "great";
-  if (score >= 52) return "medium";
+  if (food.category === "protein") {
+    const score =
+      proteinShare * 120 -
+      fatShare * 35 -
+      carbShare * 20 +
+      Math.min(proteinPer100Calories / 10, 1) * 20;
+    return scoreToRating(score, 70, 42);
+  }
+
+  if (food.category === "carb" || food.category === "fruit") {
+    const score =
+      carbShare * 95 +
+      Math.min(fiberPer100Calories / 4, 1) * 25 -
+      fatShare * 35 -
+      (proteinShare < 0.1 ? 6 : 0);
+    return scoreToRating(score, 62, 38);
+  }
+
+  if (food.category === "fat") {
+    const score =
+      fatShare * 90 +
+      Math.min(fiberPer100Calories / 3, 1) * 18 +
+      Math.min(proteinShare / 0.2, 1) * 8 -
+      carbShare * 25 -
+      (calories > 180 ? 8 : 0);
+    return scoreToRating(score, 58, 34);
+  }
+
+  if (food.category === "snack" || food.category === "drink") {
+    const score =
+      proteinShare * 65 +
+      Math.min(fiberPer100Calories / 5, 1) * 30 -
+      fatShare * 20 -
+      (calories > 160 ? 20 : 0);
+    return scoreToRating(score, 50, 28);
+  }
+
+  const score =
+    Math.min(fiberPer100Calories / 5, 1) * 40 +
+    Math.min(proteinPer100Calories / 8, 1) * 35 +
+    (calories <= 80 ? 20 : 0) -
+    (fatShare > 0.45 ? 12 : 0);
+  return scoreToRating(score, 55, 32);
+}
+
+function scoreToRating(score: number, greatAt: number, mediumAt: number): FoodGoalRating {
+  if (score >= greatAt) return "great";
+  if (score >= mediumAt) return "medium";
   return "bad";
 }
 
