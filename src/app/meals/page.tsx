@@ -421,12 +421,12 @@ export default function MealsPage() {
         </section>
 
         <section className="surface rounded-3xl p-5">
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-            <div>
+          <div className="mb-4 grid gap-2 md:flex md:items-end md:justify-between">
+            <div className="min-w-0">
               <p className="eyebrow mb-2 text-xs font-semibold">Meal library</p>
               <h2 className="text-3xl font-bold">Saved meals</h2>
             </div>
-            <div className="muted text-sm">{visibleTemplates.length} shown · {templates.length} total</div>
+            <div className="muted text-sm md:text-right">{visibleTemplates.length} shown - {templates.length} total</div>
           </div>
 
           <div className="mb-4 grid gap-3 md:grid-cols-[1fr_180px]">
@@ -456,22 +456,24 @@ export default function MealsPage() {
               const isExpanded = expandedTemplateId === template.id;
               return (
                 <article key={template.id} className="surface-strong rounded-2xl p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="grid gap-3">
                     <button
                       type="button"
                       onClick={() => setExpandedTemplateId(isExpanded ? null : template.id)}
-                      className="flex min-w-0 flex-1 items-start justify-between gap-3 text-left"
+                      className="flex min-w-0 items-start justify-between gap-3 text-left"
                     >
-                      <div>
-                        <div className="font-semibold">{template.name}</div>
+                      <div className="min-w-0">
+                        <div className="break-words text-lg font-semibold leading-snug">{template.name}</div>
                         <div className="muted mt-1 text-xs">
-                          {formatSlot(template.meal_slot)} · {items.length} item{items.length === 1 ? "" : "s"}
+                          {formatSlot(template.meal_slot)} - {items.length} item{items.length === 1 ? "" : "s"}
+                          {template.no_rebalance ? " - locked from rebalance" : ""}
                         </div>
                       </div>
                       {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
                     </button>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <label className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-xs">
+
+                    <div className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
+                      <label className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-xs">
                         <input
                           type="checkbox"
                           checked={template.is_default_daily}
@@ -479,7 +481,7 @@ export default function MealsPage() {
                         />
                         Default daily
                       </label>
-                      <label className="inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-xs">
+                      <label className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-xs">
                         <input
                           type="checkbox"
                           checked={template.no_rebalance}
@@ -487,7 +489,7 @@ export default function MealsPage() {
                         />
                         No rebalance
                       </label>
-                      <button onClick={() => deleteTemplate(template.id)} className="rounded-xl bg-white/6 p-2">
+                      <button onClick={() => deleteTemplate(template.id)} className="grid h-11 w-11 place-items-center rounded-xl bg-white/6">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
@@ -499,9 +501,9 @@ export default function MealsPage() {
                         const food = foods.find((entry) => entry.id === item.food_id);
                         if (!food) return null;
                         return (
-                          <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-black/15 px-3 py-2 text-sm">
-                            <span>{food.name}</span>
-                            <span className="muted">
+                          <div key={item.id} className="grid gap-1 rounded-xl bg-black/15 px-3 py-2 text-sm sm:grid-cols-[1fr_auto] sm:items-center">
+                            <span className="break-words">{food.name}</span>
+                            <span className="muted sm:text-right">
                               {item.amount} {item.amount_mode === "grams" || (!item.amount_mode && food.serving_mode === "grams") ? "g" : food.serving_label}
                             </span>
                           </div>
