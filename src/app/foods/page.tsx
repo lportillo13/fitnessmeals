@@ -44,6 +44,8 @@ type ScannedUnitBasis = {
   fiberPer100g: number;
 };
 
+type FoodGoalRating = "great" | "medium" | "bad";
+
 const fallbackDraft: FoodDraft = {
   name: "",
   brand: null,
@@ -79,7 +81,6 @@ export default function FoodsPage() {
   const [draftFood, setDraftFood] = useState<FoodDraft | null>(null);
   const [scannedUnitBasis, setScannedUnitBasis] = useState<ScannedUnitBasis | null>(null);
   const [addingFood, setAddingFood] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [scannerMessage, setScannerMessage] = useState("");
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -476,7 +477,6 @@ export default function FoodsPage() {
       });
 
       scannerRef.current = scanner;
-      setIsScanning(true);
       setScannerMessage("Point the camera at the barcode.");
 
       await scanner.start(
@@ -522,7 +522,6 @@ export default function FoodsPage() {
     }
 
     scannerRef.current = null;
-    setIsScanning(false);
   }
 
   function openScannerModal() {
@@ -758,7 +757,10 @@ export default function FoodsPage() {
                 <div className="space-y-2 p-3 md:hidden">
                   {categoryFoods.map((food) => (
                     <div key={food.id} className="surface-strong flex items-center justify-between gap-3 rounded-2xl p-3">
-                      <div className="font-medium">{food.name}</div>
+                      <div className="flex min-w-0 items-center gap-2 font-medium">
+                        <FoodGoalDot food={food} profile={selectedProfile} />
+                        <span className="truncate">{food.name}</span>
+                      </div>
                       <div className="flex gap-2">
                         <button
                           type="button"
@@ -813,7 +815,12 @@ export default function FoodsPage() {
                     <tbody>
                       {categoryFoods.map((food) => (
                   <tr key={food.id} className="border-t border-white/8">
-                    <td className="p-3 font-medium">{food.name}</td>
+                    <td className="p-3 font-medium">
+                      <div className="flex items-center gap-2">
+                        <FoodGoalDot food={food} profile={selectedProfile} />
+                        <span>{food.name}</span>
+                      </div>
+                    </td>
                     <td className="p-3">{food.serving_label}</td>
                     <td className="p-3">{food.calories}</td>
                     <td className="p-3">{food.protein_g} g</td>
@@ -1040,6 +1047,65 @@ function ModalNumber({ label, value, onChange }: { label: string; value: number;
       <input className="mt-1 w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="0.1" value={value} onChange={(event) => onChange(Number(event.target.value))} />
     </label>
   );
+}
+
+function FoodGoalDot({ food, profile }: { food: Food; profile?: Profile }) {
+  const rating = rateFoodForGoals(food, profile);
+  const config: Record<FoodGoalRating, { label: string; className: string }> = {
+    great: {
+      label: "Great food for your goals",
+      className: "bg-emerald-400 shadow-[0_0_0_3px_rgba(52,211,153,0.18)]",
+    },
+    medium: {
+      label: "Medium food for your goals",
+      className: "bg-orange-400 shadow-[0_0_0_3px_rgba(251,146,60,0.18)]",
+    },
+    bad: {
+      label: "Bad food for your goals",
+      className: "bg-red-500 shadow-[0_0_0_3px_rgba(239,68,68,0.18)]",
+    },
+  };
+
+  return (
+    <span
+      className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${config[rating].className}`}
+      title={config[rating].label}
+      aria-label={config[rating].label}
+    />
+  );
+}
+
+function rateFoodForGoals(food: Food, profile?: Profile): FoodGoalRating {
+  const calories = Math.max(food.calories, food.protein_g * 4 + food.carbs_g * 4 + food.fat_g * 9, 1);
+  const targetCalories = profile?.calorie_target || 0;
+  const targetProteinCalories = (profile?.protein_target || 0) * 4;
+  const targetCarbCalories = (profile?.carbs_target || 0) * 4;
+  const targetFatCalories = (profile?.fat_target || 0) * 9;
+  const targetMacroCalories =
+    targetProteinCalories + targetCarbCalories + targetFatCalories;
+  const goalCalories = targetCalories || targetMacroCalories || 1;
+  const proteinTargetShare = targetProteinCalories / goalCalories || 0.35;
+  const carbTargetShare = targetCarbCalories / goalCalories || 0.4;
+  const fatTargetShare = targetFatCalories / goalCalories || 0.25;
+  const proteinShare = (food.protein_g * 4) / calories;
+  const carbShare = (food.carbs_g * 4) / calories;
+  const fatShare = (food.fat_g * 9) / calories;
+  const proteinPer100Calories = (food.protein_g / calories) * 100;
+  const fiberPer100Calories = (food.fiber_g / calories) * 100;
+  const macroFit =
+    Math.abs(proteinShare - proteinTargetShare) * 90 +
+    Math.abs(carbShare - carbTargetShare) * 45 +
+    Math.abs(fatShare - fatTargetShare) * 45;
+  const proteinBonus = Math.min(proteinPer100Calories / 8, 1) * 28;
+  const fiberBonus = Math.min(fiberPer100Calories / 4, 1) * 12;
+  const lowValuePenalty =
+    calories >= 150 && proteinPer100Calories < 5 && fiberPer100Calories < 2 ? 18 : 0;
+  const snackPenalty = food.category === "snack" || food.category === "drink" ? 8 : 0;
+  const score = 100 - macroFit + proteinBonus + fiberBonus - lowValuePenalty - snackPenalty;
+
+  if (score >= 80) return "great";
+  if (score >= 52) return "medium";
+  return "bad";
 }
 
 function formatAllowedSlots(slots: Food["allowed_meal_slots"]) {
