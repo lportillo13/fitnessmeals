@@ -567,6 +567,9 @@ export default function FoodsPage() {
     drink: filteredFoods.filter((food) => food.category === "drink"),
     other: filteredFoods.filter((food) => food.category === "other"),
   };
+  const editingFood = editingFoodId
+    ? foods.find((food) => food.id === editingFoodId)
+    : null;
 
   return (
     <main className="app-shell">
@@ -882,7 +885,12 @@ export default function FoodsPage() {
         <div className="modal-overlay fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
           <div className="modal-panel surface w-full max-w-2xl rounded-3xl p-5">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-2xl font-bold">Edit food</h2>
+              <div className="min-w-0 pr-3">
+                <h2 className="text-2xl font-bold">Edit food</h2>
+                {editingFood && (
+                  <p className="muted mt-1 break-words text-sm">{editingFood.name}</p>
+                )}
+              </div>
               <button onClick={cancelEditing} className="rounded-xl bg-white/6 p-2">
                 <X className="h-4 w-4" />
               </button>

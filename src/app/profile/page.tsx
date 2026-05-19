@@ -293,6 +293,7 @@ export default function ProfilePage() {
             meal_template_id: template.id,
             food_id: item.food_id,
             amount: item.amount,
+            amount_mode: item.amount_mode,
           }))
         );
       }
@@ -550,7 +551,7 @@ async function generateMealBatch(
         meals?: {
           meal_name: string;
           meal_slot: "breakfast" | "snack_1" | "lunch" | "dinner";
-          items: { food_id: string; amount: number }[];
+          items: { food_id: string; amount: number; amount_mode?: "serving" | "grams" }[];
         }[];
         error?: string;
         details?: unknown;

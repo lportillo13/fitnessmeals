@@ -41,7 +41,7 @@ const requestSchema = z.object({
 type GeneratedMeal = {
   meal_name: string;
   meal_slot: "breakfast" | "snack_1" | "lunch" | "dinner";
-  items: { food_id: string; amount: number }[];
+  items: { food_id: string; amount: number; amount_mode?: "serving" | "grams" }[];
 };
 
 const mealBatchSchema = {
@@ -133,9 +133,21 @@ export async function POST(request: Request) {
       },
     });
 
-    const meals = (JSON.parse(response.output_text) as { meals: GeneratedMeal[] }).meals;
-
     const foodById = new Map(planningFoods.map((food) => [food.id, food]));
+    const rawMeals = (JSON.parse(response.output_text) as { meals: GeneratedMeal[] }).meals;
+    const meals = rawMeals.map((meal) => ({
+      ...meal,
+      items: meal.items.map((item) => {
+        const food = foodById.get(item.food_id);
+        const amountMode =
+          item.amount_mode ||
+          (food?.serving_mode === "grams" || (food?.base_grams && item.amount > 10)
+            ? "grams"
+            : "serving");
+
+        return { ...item, amount_mode: amountMode };
+      }),
+    }));
     const usesOnlyAllowedFoods = meals.every((meal) =>
       meal.items.every(
         (item) =>
@@ -156,7 +168,7 @@ export async function POST(request: Request) {
       const hasUnrealisticAmounts = meal.items.some((item) => {
         const food = foodById.get(item.food_id);
         if (!food) return true;
-        return food.serving_mode === "grams" && item.amount < minimumAmountForFood(food.category);
+        return item.amount_mode === "grams" && item.amount < minimumAmountForFood(food.category);
       });
       return carbCount <= 1 && !invalidProteinAmount && !hasUnrealisticAmounts;
     });

@@ -300,10 +300,11 @@ export function rebalanceMealItems(
     for (const item of nextItems) {
       const food = foodById.get(item.food_id);
       if (!food) continue;
-      const step = food.serving_mode === "grams" ? 5 : 0.25;
+      const itemAmountMode = item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving");
+      const step = itemAmountMode === "grams" ? 5 : 0.25;
       for (const direction of [-1, 1]) {
         const candidateAmount = Math.max(
-          minimumAmountForFood(food),
+          minimumAmountForFood(food, itemAmountMode),
           roundAmount(item.amount + step * direction, step)
         );
         if (food.category === "protein" && (slot === "lunch" || slot === "dinner") && candidateAmount < 100) {
@@ -466,10 +467,11 @@ function tuneWholeDay(
         const item = meals[mealIndex][itemIndex];
         const food = foodById.get(item.food_id);
         if (!food) continue;
-        const step = food.serving_mode === "grams" ? 5 : 0.25;
+        const itemAmountMode = item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving");
+        const step = itemAmountMode === "grams" ? 5 : 0.25;
         for (const direction of [-1, 1]) {
           const candidateAmount = Math.max(
-            minimumAmountForFood(food),
+            minimumAmountForFood(food, itemAmountMode),
             roundAmount(item.amount + step * direction, step)
           );
           if (
@@ -557,8 +559,9 @@ function isAmountAllowed(
   });
 }
 
-function minimumAmountForFood(food: Food) {
-  if (food.serving_mode === "unit") return 0.25;
+function minimumAmountForFood(food: Food, amountMode?: "serving" | "grams" | null) {
+  const mode = amountMode || (food.serving_mode === "grams" ? "grams" : "serving");
+  if (mode === "serving") return 0.25;
   if (food.category === "protein") return 50;
   if (food.category === "carb") return 30;
   if (food.category === "fat") return 5;

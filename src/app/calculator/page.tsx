@@ -369,6 +369,43 @@ export default function CalculatorPage() {
     if (!freeDay && !noRecalculate) await rebalanceFutureMeals(nextMeals, changedIndex);
   }
 
+  async function updateItemAmountMode(itemId: string, amountMode: "serving" | "grams") {
+    const changedMeal = meals.find((meal) =>
+      meal.items.some((item) => item.id === itemId)
+    );
+    const changedItem = changedMeal?.items.find((item) => item.id === itemId);
+    if (!changedMeal || !changedItem) return;
+
+    const food = visibleFoods.find((candidate) => candidate.id === changedItem.food_id);
+    const nextAmount =
+      amountMode === "grams" && food
+        ? Number(food.base_grams || changedItem.amount)
+        : amountMode === "serving"
+          ? 1
+          : changedItem.amount;
+
+    await createClient()
+      .from("daily_plan_items")
+      .update({ amount_mode: amountMode, amount: nextAmount })
+      .eq("id", itemId);
+
+    const nextMeals = meals.map((meal) => ({
+      ...meal,
+      items: meal.items.map((item) =>
+        item.id === itemId ? { ...item, amount_mode: amountMode, amount: nextAmount } : item
+      ),
+    }));
+    setMeals(nextMeals);
+
+    const changedIndex = plannerSlots.findIndex((slot) => slot.key === changedMeal.meal_slot);
+    if (!freeDay && !noRecalculate) await rebalanceFutureMeals(nextMeals, changedIndex);
+  }
+
+  function formatItemAmount(item: DailyPlanItem, food: Food) {
+    const amountMode = item.amount_mode || (food.serving_mode === "grams" ? "grams" : "serving");
+    return amountMode === "grams" ? `${item.amount} g` : `${item.amount} × ${food.serving_label}`;
+  }
+
   async function toggleItemCompleted(itemId: string, completed: boolean) {
     await createClient().from("daily_plan_items").update({ completed }).eq("id", itemId);
     setMeals((current) =>
@@ -580,6 +617,8 @@ export default function CalculatorPage() {
     )[macroKey];
     const replacementBaseAmount =
       replacementFood.serving_mode === "grams" ? Number(replacementFood.base_grams || 100) : 1;
+    const replacementAmountMode: "serving" | "grams" =
+      replacementFood.serving_mode === "grams" ? "grams" : "serving";
     const replacementBaseMacro =
       calculateFoodMacros(replacementFood, replacementBaseAmount)[macroKey];
     if (replacementBaseMacro <= 0) {
@@ -592,14 +631,14 @@ export default function CalculatorPage() {
 
     await createClient()
       .from("daily_plan_items")
-      .update({ food_id: replacementFood.id, amount: nextAmount })
+      .update({ food_id: replacementFood.id, amount: nextAmount, amount_mode: replacementAmountMode })
       .eq("id", item.id);
 
     const nextMeals = meals.map((entry) => ({
       ...entry,
       items: entry.items.map((candidate) =>
         candidate.id === item.id
-          ? { ...candidate, food_id: replacementFood.id, amount: nextAmount }
+          ? { ...candidate, food_id: replacementFood.id, amount: nextAmount, amount_mode: replacementAmountMode }
           : candidate
       ),
     }));
@@ -811,26 +850,25 @@ export default function CalculatorPage() {
                             ["carb", "protein", "fat"].includes(food.category)
                         );
                         return (
-                          <div key={item.id} className="surface-strong flex items-center justify-between gap-3 rounded-2xl p-3">
-                            <div className="flex items-center gap-3">
+                          <div key={item.id} className="surface-strong grid gap-3 rounded-2xl p-3 md:grid-cols-[1fr_auto] md:items-center">
+                            <div className="flex min-w-0 items-start gap-3">
                               <input
+                                className="mt-1 shrink-0"
                                 type="checkbox"
                                 checked={Boolean(item.completed)}
                                 onChange={(event) => toggleItemCompleted(item.id, event.target.checked)}
                               />
-                              <div>
-      <div className="font-medium">{food.name}</div>
+                              <div className="min-w-0">
+      <div className="break-words font-medium">{food.name}</div>
       <div className="muted text-sm">
-        {itemAmountMode === "grams"
-          ? `${item.amount} g`
-          : `${item.amount} × ${food.serving_label}`}
+        {formatItemAmount(item, food)}
       </div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="grid min-w-0 grid-cols-[1fr_96px_96px_auto] items-center gap-2">
                               {swapCandidates.length > 0 && (
                                 <select
-                                  className="max-w-40 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                                  className="min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
                                   defaultValue=""
                                   onChange={(event) => {
                                     if (event.target.value) void swapItemFood(item, event.target.value);
@@ -844,7 +882,18 @@ export default function CalculatorPage() {
                                   ))}
                                 </select>
                               )}
+                              {swapCandidates.length === 0 && <div />}
                               <input className="w-24 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" type="number" min="0" step={itemAmountMode === "grams" ? "5" : "0.25"} value={item.amount} onChange={(event) => updateItemAmount(item.id, Number(event.target.value))} />
+                              <select
+                                className="w-24 rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-sm text-white"
+                                value={itemAmountMode}
+                                onChange={(event) =>
+                                  updateItemAmountMode(item.id, event.target.value as "serving" | "grams")
+                                }
+                              >
+                                <option value="grams" disabled={!food.base_grams}>Grams</option>
+                                <option value="serving">Serving</option>
+                              </select>
                               <button onClick={() => removeItem(item.id)} className="rounded-xl bg-white/6 p-2"><Trash2 className="h-4 w-4" /></button>
                             </div>
                           </div>
