@@ -983,8 +983,24 @@ export default function CalculatorPage() {
                     </button>
                     {meal && (
                       <div className="grid min-w-0 w-full grid-cols-2 gap-2 md:flex md:w-auto md:flex-wrap">
-                        <button onClick={() => shuffleMeal(slot.key)} className="inline-flex min-w-0 items-center justify-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm"><Shuffle className="h-4 w-4" />Random swap</button>
-                        <button onClick={() => savePlannedMealAsTemplate(meal)} className="inline-flex min-w-0 items-center justify-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm"><Save className="h-4 w-4" />Save meal</button>
+                        <button
+                          type="button"
+                          onClick={() => shuffleMeal(slot.key)}
+                          className="inline-flex h-11 w-11 min-w-0 items-center justify-center rounded-xl bg-white/6 text-sm"
+                          aria-label={`Random swap ${slot.label}`}
+                          title="Random swap"
+                        >
+                          <Shuffle className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => savePlannedMealAsTemplate(meal)}
+                          className="inline-flex h-11 w-11 min-w-0 items-center justify-center rounded-xl bg-white/6 text-sm"
+                          aria-label={`Save ${slot.label} meal`}
+                          title="Save meal"
+                        >
+                          <Save className="h-4 w-4" />
+                        </button>
                         <MealOptionSelect
                           value={selectedOptionValue}
                           options={slotOptions}
