@@ -738,8 +738,22 @@ function isFoodSetCompatible(slot: MealSlot, foods: Food[]) {
   if ((slot === "snack_1" || slot === "snack_2") && hasSavoryMeat && fruit) {
     return false;
   }
+  if (slot === "breakfast" && !isBreakfastProtein(protein)) {
+    return false;
+  }
 
   return true;
+}
+
+function isBreakfastProtein(food: Food) {
+  const name = food.name.toLowerCase();
+  if (name.includes("egg")) return true;
+  if (name.includes("yogurt")) return true;
+  if (name.includes("oikos")) return true;
+  if (name.includes("cottage")) return true;
+  if (name.includes("shake")) return true;
+  if (name.includes("protein")) return true;
+  return false;
 }
 
 function formatSlotName(slot: MealSlot) {

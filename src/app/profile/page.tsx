@@ -23,6 +23,22 @@ type ProfileForm = {
   goalInstruction: string;
 };
 
+type AiCoachPlan = {
+  model: string;
+  plan: {
+    plan_bmr: number;
+    plan_tdee: number;
+    plan_daily_deficit: number;
+    calorie_target: number;
+    protein_target: number;
+    carbs_target: number;
+    fat_target: number;
+    summary: string;
+    coach_notes: string[];
+    steps: string[];
+  };
+};
+
 const defaultForm: ProfileForm = {
   name: "Jazmin",
   age: 31,
@@ -44,6 +60,7 @@ export default function ProfilePage() {
   const [message, setMessage] = useState("");
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const [generationState, setGenerationState] = useState<"idle" | "generating" | "success">("idle");
+  const [aiCoachPlan, setAiCoachPlan] = useState<AiCoachPlan | null>(null);
   const recalculatedTargets = calculateGoalTargets(form);
   const loadedProfile = profiles.find((profile) => profile.id === form.id);
   const displayedTargets = {
@@ -68,6 +85,8 @@ export default function ProfilePage() {
     },
     displayedTargets
   );
+  const displayedCoachNotes = aiCoachPlan?.plan.coach_notes || coachPlan.coachNotes;
+  const displayedCoachSteps = aiCoachPlan?.plan.steps || coachPlan.steps;
 
   const loadProfiles = useCallback(async () => {
     const { data, error } = await createClient().from("meal_profiles").select("*").order("name");
@@ -118,6 +137,7 @@ export default function ProfilePage() {
   }
 
   function loadProfile(profile: Profile, announce = true, broadcast = true) {
+    setAiCoachPlan(null);
     setForm({
       id: profile.id,
       name: profile.name,
@@ -188,6 +208,7 @@ export default function ProfilePage() {
   }
 
   function startNewProfile() {
+    setAiCoachPlan(null);
     setForm({ ...defaultForm, name: "" });
     setMessage("New profile ready.");
   }
@@ -203,18 +224,45 @@ export default function ProfilePage() {
     setMessage("");
     const supabase = createClient();
     try {
+      const coachResponse = await fetch("/api/coach-macro-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile: {
+            name: form.name,
+            age: form.age,
+            sex: form.sex,
+            weight_lb: form.weightLb,
+            height_in: form.heightIn,
+            training_days_per_week: form.trainingDaysPerWeek,
+            steps_per_day: form.stepsPerDay,
+            goal_loss_lb: form.goalLossLb,
+            current_body_fat_percentage: form.currentBodyFatPercentage || null,
+            goal_body_fat_percentage: form.goalBodyFatPercentage || null,
+            goal_date: form.goalDate,
+            goal_instruction: form.goalInstruction,
+          },
+          formula_targets: recalculatedTargets,
+        }),
+      });
+      const coachPayload = (await coachResponse.json()) as AiCoachPlan | { error?: string };
+      if (!coachResponse.ok || !("plan" in coachPayload)) {
+        const errorMessage = "error" in coachPayload ? coachPayload.error : undefined;
+        throw new Error(errorMessage || "OpenAI did not return a coach macro plan.");
+      }
+
       const targetPayload = {
         current_body_fat_percentage: form.currentBodyFatPercentage || null,
         goal_body_fat_percentage: form.goalBodyFatPercentage || null,
-        plan_bmr: recalculatedTargets.bmr,
-        plan_tdee: recalculatedTargets.tdee,
-        plan_daily_deficit: recalculatedTargets.requiredDailyDeficit,
+        plan_bmr: coachPayload.plan.plan_bmr,
+        plan_tdee: coachPayload.plan.plan_tdee,
+        plan_daily_deficit: coachPayload.plan.plan_daily_deficit,
         plan_start_date: new Date().toLocaleDateString("en-CA"),
         plan_start_weight_lb: form.weightLb,
-        calorie_target: recalculatedTargets.calorieTarget,
-        protein_target: recalculatedTargets.proteinTarget,
-        carbs_target: recalculatedTargets.carbsTarget,
-        fat_target: recalculatedTargets.fatTarget,
+        calorie_target: coachPayload.plan.calorie_target,
+        protein_target: coachPayload.plan.protein_target,
+        carbs_target: coachPayload.plan.carbs_target,
+        fat_target: coachPayload.plan.fat_target,
         goal_instruction: form.goalInstruction,
       };
       const { error: updateError } = await supabase
@@ -227,11 +275,10 @@ export default function ProfilePage() {
           return;
         }
 
-      setMessage(
-        "Coach macro plan saved. The app will use saved meals first and food-based fallback meals only when a slot has no saved option."
-      );
+      setMessage(`Coach macro plan saved from OpenAI ${coachPayload.model}.`);
       setGenerationState("success");
       await loadProfiles();
+      setAiCoachPlan(coachPayload);
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -353,12 +400,17 @@ export default function ProfilePage() {
           <div className="mt-5 space-y-3">
             <div className="surface-strong rounded-2xl p-3">
               <p className="text-sm font-semibold">Coach read</p>
-              <p className="muted mt-1 text-sm">{coachPlan.coachNotes.join(" ")}</p>
+              <p className="muted mt-1 text-sm">
+                {aiCoachPlan?.plan.summary || displayedCoachNotes.join(" ")}
+              </p>
+              {aiCoachPlan?.model && (
+                <p className="muted mt-2 text-xs">Generated with OpenAI {aiCoachPlan.model}</p>
+              )}
             </div>
             <div className="surface-strong rounded-2xl p-3">
               <p className="text-sm font-semibold">Daily coaching steps</p>
               <ul className="mt-2 space-y-2 text-sm text-slate-200">
-                {coachPlan.steps.map((step) => (
+                {displayedCoachSteps.map((step) => (
                   <li key={step}>{step}</li>
                 ))}
               </ul>
@@ -371,8 +423,8 @@ export default function ProfilePage() {
           title={generationState === "generating" ? "Generating nutrition plan" : "Nutrition plan ready"}
           body={
             generationState === "generating"
-              ? "Saving macro targets and coaching steps from this profile."
-              : "Your macro targets and coaching plan are ready. No meals were generated."
+              ? "Requesting an OpenAI coach macro plan and saving the returned targets."
+              : `Your macro targets and coaching plan are ready${aiCoachPlan?.model ? ` from ${aiCoachPlan.model}` : ""}.`
           }
           onClose={generationState === "success" ? () => setGenerationState("idle") : undefined}
         />

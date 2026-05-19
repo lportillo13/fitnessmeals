@@ -53,6 +53,7 @@ export default function CalculatorPage() {
   const [manualMealSlot, setManualMealSlot] = useState<MealSlot>("breakfast");
   const [manualAmount, setManualAmount] = useState(1);
   const [manualAmountMode, setManualAmountMode] = useState<"serving" | "grams">("serving");
+  const [displayAmountMode, setDisplayAmountMode] = useState<"serving" | "grams">("serving");
   const [openMealSlot, setOpenMealSlot] = useState<MealSlot>("breakfast");
   const [freeDay, setFreeDay] = useState(false);
   const [noRecalculate, setNoRecalculate] = useState(false);
@@ -170,9 +171,9 @@ export default function CalculatorPage() {
       setMeals(
         loadedMeals.map((meal) => ({
           ...meal,
-          items: ((itemData || []) as DailyPlanItem[]).filter(
-            (item) => item.daily_plan_meal_id === meal.id
-          ),
+          items: ((itemData || []) as DailyPlanItem[])
+            .filter((item) => item.daily_plan_meal_id === meal.id)
+            .map((item) => ({ ...item, completed: item.completed || meal.completed })),
         }))
       );
       const firstIncomplete =
@@ -198,6 +199,7 @@ export default function CalculatorPage() {
     () =>
       meals.flatMap((meal) =>
         meal.items.flatMap((item) => {
+          if (!item.completed) return [];
           const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
           return food
             ? [
@@ -413,17 +415,49 @@ export default function CalculatorPage() {
 
   function formatItemAmount(item: DailyPlanItem, food: Food) {
     const amountMode = inferAmountMode(food, Number(item.amount), item.amount_mode);
-    return amountMode === "grams" ? `${item.amount} g` : `${item.amount} x ${food.serving_label}`;
+    const amount = Number(item.amount);
+
+    if (displayAmountMode === "grams") {
+      const grams =
+        amountMode === "grams"
+          ? amount
+          : food.base_grams
+            ? amount * Number(food.base_grams)
+            : null;
+
+      if (grams != null) return `${roundQuantity(grams)} g`;
+    }
+
+    const servings =
+      amountMode === "serving"
+        ? amount
+        : food.base_grams
+          ? amount / Number(food.base_grams)
+          : null;
+
+    if (servings != null) return `${roundQuantity(servings)} x ${food.serving_label}`;
+    return `${roundQuantity(amount)} g`;
   }
 
   async function toggleItemCompleted(itemId: string, completed: boolean) {
-    await createClient().from("daily_plan_items").update({ completed }).eq("id", itemId);
-    setMeals((current) =>
-      current.map((meal) => ({
-        ...meal,
-        items: meal.items.map((item) => (item.id === itemId ? { ...item, completed } : item)),
-      }))
-    );
+    const supabase = createClient();
+    await supabase.from("daily_plan_items").update({ completed }).eq("id", itemId);
+    let nextMeals = meals.map((meal) => ({
+      ...meal,
+      items: meal.items.map((item) => (item.id === itemId ? { ...item, completed } : item)),
+    }));
+    const changedMeal = nextMeals.find((meal) => meal.items.some((item) => item.id === itemId));
+    const mealCompleted =
+      Boolean(changedMeal?.items.length) &&
+      Boolean(changedMeal?.items.every((item) => item.completed));
+
+    if (changedMeal && changedMeal.completed !== mealCompleted) {
+      await supabase.from("daily_plan_meals").update({ completed: mealCompleted }).eq("id", changedMeal.id);
+      nextMeals = nextMeals.map((meal) =>
+        meal.id === changedMeal.id ? { ...meal, completed: mealCompleted } : meal
+      );
+    }
+    setMeals(nextMeals);
     if (completed) {
       setMotivation({ message: instantMotivation("meal_completed"), tone: "positive" });
     }
@@ -503,9 +537,17 @@ export default function CalculatorPage() {
   }
 
   async function toggleCompleted(mealId: string, completed: boolean) {
-    await createClient().from("daily_plan_meals").update({ completed }).eq("id", mealId);
+    const supabase = createClient();
+    await supabase.from("daily_plan_meals").update({ completed }).eq("id", mealId);
+    await supabase.from("daily_plan_items").update({ completed }).eq("daily_plan_meal_id", mealId);
     const nextMeals = meals.map((meal) =>
-      meal.id === mealId ? { ...meal, completed } : meal
+      meal.id === mealId
+        ? {
+            ...meal,
+            completed,
+            items: meal.items.map((item) => ({ ...item, completed })),
+          }
+        : meal
     );
     setMeals(nextMeals);
     if (completed) {
@@ -578,6 +620,7 @@ export default function CalculatorPage() {
         food_id: manualFoodId,
         amount: manualAmount,
         amount_mode: manualAmountMode,
+        completed: true,
       })
       .select("*")
       .single();
@@ -768,6 +811,22 @@ export default function CalculatorPage() {
               <button onClick={generatePlan} className="inline-flex items-center gap-2 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black">
                 <RefreshCw className="h-4 w-4" /> {plan ? "Redesign meal plan" : "Create meal plan"}
               </button>
+              <div className="inline-flex rounded-2xl bg-white/8 p-1 text-sm font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setDisplayAmountMode("serving")}
+                  className={`rounded-xl px-4 py-2 ${displayAmountMode === "serving" ? "bg-lime-300 text-black" : "text-white"}`}
+                >
+                  Servings
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDisplayAmountMode("grams")}
+                  className={`rounded-xl px-4 py-2 ${displayAmountMode === "grams" ? "bg-lime-300 text-black" : "text-white"}`}
+                >
+                  Grams
+                </button>
+              </div>
               <label className="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-4 py-3 text-sm font-semibold">
                 <input
                   type="checkbox"
@@ -1002,6 +1061,10 @@ function exceedsTargets(totals: ReturnType<typeof calculateDailyTotals>, profile
     totals.carbs > profile.carbs_target ||
     totals.fat > profile.fat_target
   );
+}
+
+function roundQuantity(value: number) {
+  return Number(value.toFixed(2)).toString();
 }
 
 function MealOptionSelect({
