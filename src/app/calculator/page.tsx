@@ -254,6 +254,7 @@ export default function CalculatorPage() {
         ? null
         : entry.selected!.template.id,
       meal_name: entry.selected!.template.name,
+      no_rebalance: false,
     }));
     const { data: createdMeals } = await supabase
       .from("daily_plan_meals")
@@ -295,6 +296,7 @@ export default function CalculatorPage() {
         meal_template_id: option.template.id.startsWith("synthetic-") ? null : option.template.id,
         meal_name: option.template.name,
         completed: false,
+        no_rebalance: meal.no_rebalance,
       })
       .eq("id", meal.id)
       .select("*")
@@ -329,6 +331,7 @@ export default function CalculatorPage() {
             meal_template_id: option.template.id,
             meal_name: option.template.name,
             completed: false,
+            no_rebalance: meal.no_rebalance,
             items: option.items.map((item) => ({
               id: item.id,
               daily_plan_meal_id: meal.id,
@@ -432,12 +435,14 @@ export default function CalculatorPage() {
     const futureMeals = sourceMeals.filter(
       (meal) =>
         plannerSlots.findIndex((slot) => slot.key === meal.meal_slot) > changedIndex &&
-        !meal.completed
+        !meal.completed &&
+        !meal.no_rebalance
     );
     const lockedMeals = sourceMeals.filter(
       (meal) =>
         plannerSlots.findIndex((slot) => slot.key === meal.meal_slot) <= changedIndex ||
-        meal.completed
+        meal.completed ||
+        meal.no_rebalance
     );
     const lockedFoods = lockedMeals.flatMap((meal) =>
       meal.items.flatMap((item) => {
@@ -496,19 +501,19 @@ export default function CalculatorPage() {
     const nextMeals = meals.map((meal) =>
       meal.id === mealId ? { ...meal, completed } : meal
     );
-    setMeals((current) => {
-      const nextMeals = current.map((meal) =>
-        meal.id === mealId ? { ...meal, completed } : meal
-      );
-      if (completed) {
-        const nextIncomplete = plannerSlots.find((slot) =>
-          nextMeals.some((meal) => meal.meal_slot === slot.key && !meal.completed)
-        );
-        if (nextIncomplete) setOpenMealSlot(nextIncomplete.key);
-      }
-      return nextMeals;
-    });
+    setMeals(nextMeals);
     if (completed) {
+      const completedMeal = nextMeals.find((meal) => meal.id === mealId);
+      const completedIndex = completedMeal
+        ? plannerSlots.findIndex((slot) => slot.key === completedMeal.meal_slot)
+        : -1;
+      if (completedIndex >= 0 && !freeDay && !noRecalculate) {
+        await rebalanceFutureMeals(nextMeals, completedIndex);
+      }
+      const nextIncomplete = plannerSlots.find((slot) =>
+        nextMeals.some((meal) => meal.meal_slot === slot.key && !meal.completed)
+      );
+      if (nextIncomplete) setOpenMealSlot(nextIncomplete.key);
       const allCompleted =
         nextMeals.length > 0 &&
         plannerSlots.every((slot) =>
@@ -519,6 +524,18 @@ export default function CalculatorPage() {
         tone: "positive",
       });
     }
+  }
+
+  async function toggleMealNoRebalance(mealId: string, noRebalance: boolean) {
+    await createClient()
+      .from("daily_plan_meals")
+      .update({ no_rebalance: noRebalance })
+      .eq("id", mealId);
+    setMeals((current) =>
+      current.map((meal) =>
+        meal.id === mealId ? { ...meal, no_rebalance: noRebalance } : meal
+      )
+    );
   }
 
   async function addManualFood() {
@@ -549,6 +566,7 @@ export default function CalculatorPage() {
           meal_template_id: null,
           meal_name: "Manual meal",
           completed: true,
+          no_rebalance: true,
         })
         .select("*")
         .single();
@@ -661,6 +679,7 @@ export default function CalculatorPage() {
         meal_template_id: template.id.startsWith("synthetic-") ? null : template.id,
         meal_name: template.name,
         completed: false,
+        no_rebalance: meal.no_rebalance,
       })
       .eq("id", meal.id)
       .select("*")
@@ -830,6 +849,10 @@ export default function CalculatorPage() {
                         <label className="col-span-2 inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm md:col-span-1">
                           <input type="checkbox" checked={meal.completed} onChange={(event) => toggleCompleted(meal.id, event.target.checked)} />
                           <CheckCircle2 className="h-4 w-4" />Completed
+                        </label>
+                        <label className="col-span-2 inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm md:col-span-1">
+                          <input type="checkbox" checked={meal.no_rebalance} onChange={(event) => toggleMealNoRebalance(meal.id, event.target.checked)} />
+                          No rebalance
                         </label>
                       </div>
                     )}

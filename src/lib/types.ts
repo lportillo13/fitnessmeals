@@ -103,6 +103,7 @@ export type DailyPlanMeal = {
   meal_template_id: string | null;
   meal_name: string;
   completed: boolean;
+  no_rebalance: boolean;
 };
 
 export type DailyPlanItem = {

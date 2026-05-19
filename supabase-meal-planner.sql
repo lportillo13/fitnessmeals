@@ -64,8 +64,12 @@ create table if not exists public.daily_plan_meals (
   meal_template_id uuid references public.meal_templates(id) on delete set null,
   meal_name text not null,
   completed boolean not null default false,
+  no_rebalance boolean not null default false,
   unique (daily_plan_id, meal_slot)
 );
+
+alter table public.daily_plan_meals
+  add column if not exists no_rebalance boolean not null default false;
 
 create table if not exists public.daily_plan_items (
   id uuid primary key default gen_random_uuid(),
