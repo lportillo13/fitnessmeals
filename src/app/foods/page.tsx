@@ -11,7 +11,7 @@ import type { Food, Profile } from "@/lib/types";
 
 type EditableFoodFields = Pick<
   Food,
-  "calories" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g" | "max_amount" | "allowed_meal_slots" | "serving_mode" | "serving_label" | "base_grams"
+  "category" | "calories" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g" | "max_amount" | "allowed_meal_slots" | "serving_mode" | "serving_label" | "base_grams"
 >;
 
 type FoodDraft = Omit<Food, "id" | "user_id" | "profile_id" | "is_public">;
@@ -142,6 +142,7 @@ export default function FoodsPage() {
   function startEditing(food: Food) {
     setEditingFoodId(food.id);
     setEditValues({
+      category: food.category,
       calories: food.calories,
       protein_g: food.protein_g,
       carbs_g: food.carbs_g,
@@ -183,7 +184,7 @@ export default function FoodsPage() {
     setFoods((current) =>
       current.map((food) => (food.id === foodId ? (data as Food) : food))
     );
-    setMessage("Macros saved.");
+    setMessage("Food saved.");
     setSavingFoodId(null);
     cancelEditing();
   }
@@ -876,6 +877,26 @@ export default function FoodsPage() {
               </button>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
+              <label className="block">
+                <span className="text-sm font-medium">Food type</span>
+                <select
+                  className="mt-1 w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                  value={editValues.category}
+                  onChange={(event) =>
+                    setEditValues((current) =>
+                      current
+                        ? { ...current, category: event.target.value as Food["category"] }
+                        : current
+                    )
+                  }
+                >
+                  {foodCategoryOptions.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label className="block">
                 <span className="text-sm font-medium">Unit mode</span>
                 <select
