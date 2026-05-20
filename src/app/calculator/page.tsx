@@ -998,7 +998,7 @@ export default function CalculatorPage() {
                       <p className="muted max-w-full break-words text-sm">{meal?.meal_name || "No meal selected yet."}</p>
                     </button>
                     {meal && (
-                      <div className="grid min-w-0 w-full grid-cols-2 gap-2 md:flex md:w-auto md:flex-wrap">
+                      <div className="grid min-w-0 w-full grid-cols-[44px_44px_minmax(0,1fr)] gap-2 md:grid-cols-[44px_44px_minmax(16rem,1fr)_auto]">
                         <button
                           type="button"
                           onClick={() => shuffleMeal(slot.key)}
@@ -1025,7 +1025,7 @@ export default function CalculatorPage() {
                             if (option) void replaceMealAndRebalance(slot.key, option);
                           }}
                         />
-                        <label className="col-span-2 inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm md:col-span-1">
+                        <label className="col-span-3 inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-sm md:col-span-1">
                           <input type="checkbox" checked={meal.completed} onChange={(event) => toggleCompleted(meal.id, event.target.checked)} />
                           <CheckCircle2 className="h-4 w-4" />Completed
                         </label>
@@ -1047,8 +1047,8 @@ export default function CalculatorPage() {
                             ["carb", "protein", "fat"].includes(food.category)
                         );
                         return (
-                          <div key={item.id} className="surface-strong grid gap-3 rounded-2xl p-3 lg:grid-cols-[minmax(210px,1fr)_40px_86px_96px_40px] lg:items-center">
-                            <div className="flex min-w-0 items-start gap-3">
+                          <div key={item.id} className="surface-strong grid grid-cols-[40px_minmax(72px,1fr)_minmax(108px,1fr)_40px] gap-3 rounded-2xl p-3 lg:grid-cols-[minmax(210px,1fr)_40px_86px_96px_40px] lg:items-center">
+                            <div className="col-span-4 flex min-w-0 items-start gap-3 lg:col-span-1">
                               <input
                                 className="mt-1 shrink-0"
                                 type="checkbox"
@@ -1069,7 +1069,7 @@ export default function CalculatorPage() {
                                 onChange={(foodId) => swapItemFood(item, foodId)}
                               />
                             ) : (
-                              <div className="hidden lg:block" />
+                              <div className="h-10 w-10" />
                             )}
                             <input className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" type="number" min="0" step={displayAmount.amountMode === "grams" ? "5" : "0.25"} value={displayAmount.amount} onChange={(event) => updateItemAmount(item.id, Number(event.target.value), displayAmount.amountMode)} />
                             <select
@@ -1243,7 +1243,7 @@ function MealOptionSelect({
   const selected = options.find((option) => option.template.id === value);
 
   return (
-    <label className="relative col-span-2 block min-w-0 w-full md:col-span-1 md:w-auto md:min-w-64">
+    <label className="relative block min-w-0 w-full">
       <span className="pointer-events-none flex min-h-11 items-center rounded-xl border border-white/10 bg-white/5 px-3 py-2 pr-9 text-sm text-white">
         <span className="line-clamp-2 break-words">{selected?.template.name || "Choose meal"}</span>
       </span>
