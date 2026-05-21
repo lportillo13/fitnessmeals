@@ -36,6 +36,185 @@ const muscleGroups = [
   "Full body",
 ];
 
+const starterExercises: Exercise[] = [
+  {
+    id: "starter-back-squat",
+    profile_id: null,
+    name: "Back squat",
+    muscle_group: "Legs",
+    equipment: "Barbell",
+    video_url: null,
+    instructions: "Brace, sit between the hips, keep knees tracking over toes, and drive up through the floor.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-romanian-deadlift",
+    profile_id: null,
+    name: "Romanian deadlift",
+    muscle_group: "Hamstrings",
+    equipment: "Barbell or dumbbells",
+    video_url: null,
+    instructions: "Hinge at the hips with soft knees, keep the back neutral, and stop when hamstrings are loaded.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-leg-press",
+    profile_id: null,
+    name: "Leg press",
+    muscle_group: "Legs",
+    equipment: "Machine",
+    video_url: null,
+    instructions: "Set feet about shoulder width, lower with control, and press without locking out aggressively.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-walking-lunge",
+    profile_id: null,
+    name: "Walking lunge",
+    muscle_group: "Legs",
+    equipment: "Dumbbells or bodyweight",
+    video_url: null,
+    instructions: "Step long enough to keep the front heel planted, lower under control, and alternate legs.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-hip-thrust",
+    profile_id: null,
+    name: "Hip thrust",
+    muscle_group: "Glutes",
+    equipment: "Barbell or machine",
+    video_url: null,
+    instructions: "Tuck ribs down, drive through heels, and squeeze glutes at the top.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-bench-press",
+    profile_id: null,
+    name: "Bench press",
+    muscle_group: "Chest",
+    equipment: "Barbell",
+    video_url: null,
+    instructions: "Pin shoulder blades, lower to the lower chest, and press back over the shoulders.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-incline-dumbbell-press",
+    profile_id: null,
+    name: "Incline dumbbell press",
+    muscle_group: "Chest",
+    equipment: "Dumbbells",
+    video_url: null,
+    instructions: "Use a slight incline, lower dumbbells beside upper chest, and press without shrugging.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-push-up",
+    profile_id: null,
+    name: "Push-up",
+    muscle_group: "Chest",
+    equipment: "Bodyweight",
+    video_url: null,
+    instructions: "Keep a straight line from shoulders to ankles and lower chest toward the floor.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-lat-pulldown",
+    profile_id: null,
+    name: "Lat pulldown",
+    muscle_group: "Back",
+    equipment: "Cable machine",
+    video_url: null,
+    instructions: "Pull elbows down toward ribs and avoid leaning back excessively.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-seated-cable-row",
+    profile_id: null,
+    name: "Seated cable row",
+    muscle_group: "Back",
+    equipment: "Cable machine",
+    video_url: null,
+    instructions: "Reach forward with control, then row elbows behind the body while keeping the torso stable.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-dumbbell-shoulder-press",
+    profile_id: null,
+    name: "Dumbbell shoulder press",
+    muscle_group: "Shoulders",
+    equipment: "Dumbbells",
+    video_url: null,
+    instructions: "Press from shoulder height while keeping ribs stacked over hips.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-lateral-raise",
+    profile_id: null,
+    name: "Lateral raise",
+    muscle_group: "Shoulders",
+    equipment: "Dumbbells or cable",
+    video_url: null,
+    instructions: "Raise arms slightly forward of the body and stop around shoulder height.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-biceps-curl",
+    profile_id: null,
+    name: "Biceps curl",
+    muscle_group: "Arms",
+    equipment: "Dumbbells or cable",
+    video_url: null,
+    instructions: "Keep elbows quiet and curl without swinging.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-triceps-rope-pressdown",
+    profile_id: null,
+    name: "Triceps rope pressdown",
+    muscle_group: "Arms",
+    equipment: "Cable machine",
+    video_url: null,
+    instructions: "Keep elbows pinned and extend fully at the bottom.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-plank",
+    profile_id: null,
+    name: "Plank",
+    muscle_group: "Core",
+    equipment: "Bodyweight",
+    video_url: null,
+    instructions: "Brace abs, squeeze glutes, and hold a straight line.",
+    is_public: true,
+    created_at: "",
+  },
+  {
+    id: "starter-cable-crunch",
+    profile_id: null,
+    name: "Cable crunch",
+    muscle_group: "Core",
+    equipment: "Cable machine",
+    video_url: null,
+    instructions: "Round through the upper back and pull ribs toward pelvis.",
+    is_public: true,
+    created_at: "",
+  },
+];
+
 function getTodayKey() {
   return new Date().toLocaleDateString("en-CA");
 }
@@ -183,7 +362,8 @@ export default function ExercisesPage() {
         .sort((a, b) => a.exercise_name.localeCompare(b.exercise_name) || a.set_number - b.set_number),
     [sets, currentLog]
   );
-  const filteredExercises = exercises
+  const availableExercises = useMemo(() => mergeExercises(exercises, starterExercises), [exercises]);
+  const filteredExercises = availableExercises
     .filter((exercise) => {
       const query = exerciseSearch.toLowerCase();
       const matchesSearch =
@@ -194,14 +374,17 @@ export default function ExercisesPage() {
       return matchesSearch && matchesMuscle;
     })
     .slice(0, 24);
-  const selectedExercise = exercises.find((exercise) => exercise.id === selectedExerciseId);
+  const selectedExercise =
+    filteredExercises.find((exercise) => exercise.id === selectedExerciseId) ||
+    filteredExercises[0] ||
+    availableExercises.find((exercise) => exercise.id === selectedExerciseId);
   const selectedRoutine = routines.find((routine) => routine.id === selectedRoutineId);
   const selectedRoutineItems = routineItems
     .filter((item) => item.routine_id === selectedRoutineId)
     .sort((a, b) => a.sort_order - b.sort_order);
   const progressExercise =
-    exercises.find((exercise) => exercise.id === progressExerciseId) ||
-    exercises.find((exercise) => sets.some((set) => set.exercise_id === exercise.id));
+    availableExercises.find((exercise) => exercise.id === progressExerciseId) ||
+    availableExercises.find((exercise) => sets.some((set) => set.exercise_id === exercise.id));
   const progressEntries = buildProgressEntries(progressExercise, logs, sets);
   const latestProgress = progressEntries.at(-1);
   const previousProgress = progressEntries.at(-2);
@@ -258,7 +441,7 @@ export default function ExercisesPage() {
     ).length;
     const rows = Array.from({ length: setCount }, (_, index) => ({
       workout_log_id: log.id,
-      exercise_id: selectedExercise.id,
+      exercise_id: getPersistedExerciseId(selectedExercise),
       exercise_name: selectedExercise.name,
       set_number: existingSetCount + index + 1,
       reps,
@@ -342,7 +525,7 @@ export default function ExercisesPage() {
 
   async function addExerciseToRoutine() {
     const routine = routines.find((entry) => entry.id === selectedRoutineId);
-    const exercise = exercises.find((entry) => entry.id === routineExerciseId);
+    const exercise = availableExercises.find((entry) => entry.id === routineExerciseId);
     if (!routine || !exercise) {
       setMessage("Choose a routine and exercise first.");
       return;
@@ -352,7 +535,7 @@ export default function ExercisesPage() {
       .from("exercise_routine_items")
       .insert({
         routine_id: routine.id,
-        exercise_id: exercise.id,
+        exercise_id: getPersistedExerciseId(exercise),
         exercise_name: exercise.name,
         target_sets: routineSets,
         target_reps: routineReps || "10",
@@ -563,7 +746,7 @@ export default function ExercisesPage() {
                 value={progressExercise?.id || ""}
                 onChange={(event) => setProgressExerciseId(event.target.value)}
               >
-                {exercises.map((exercise) => (
+                {availableExercises.map((exercise) => (
                   <option key={exercise.id} value={exercise.id}>
                     {exercise.name}
                   </option>
@@ -746,7 +929,7 @@ export default function ExercisesPage() {
                   onChange={(event) => setRoutineExerciseId(event.target.value)}
                 >
                   <option value="">Add exercise</option>
-                  {exercises.map((exercise) => (
+                  {availableExercises.map((exercise) => (
                     <option key={exercise.id} value={exercise.id}>
                       {exercise.name}
                     </option>
@@ -877,6 +1060,18 @@ function ExercisePreview({ exercise }: { exercise: Exercise }) {
       {exercise.instructions && <p className="muted text-sm">{exercise.instructions}</p>}
     </div>
   );
+}
+
+function mergeExercises(savedExercises: Exercise[], fallbackExercises: Exercise[]) {
+  const savedNames = new Set(savedExercises.map((exercise) => exercise.name.toLowerCase()));
+  return [
+    ...savedExercises,
+    ...fallbackExercises.filter((exercise) => !savedNames.has(exercise.name.toLowerCase())),
+  ].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function getPersistedExerciseId(exercise: Exercise) {
+  return exercise.id.startsWith("starter-") ? null : exercise.id;
 }
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
