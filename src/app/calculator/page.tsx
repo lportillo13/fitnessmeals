@@ -1071,10 +1071,8 @@ export default function CalculatorPage() {
             {plannerSlots.map((slot) => {
               const meal = meals.find((candidate) => candidate.meal_slot === slot.key);
               const slotOptions = getSlotOptions(savedOptions, slot.key, rules);
-              const selectedOptionValue =
-                meal?.meal_template_id ||
-                slotOptions.find((option) => option.template.name === meal?.meal_name)?.template.id ||
-                "";
+              const selectedOptionValue = meal?.meal_template_id || "";
+              const savedMealName = meal?.meal_template_id ? meal.meal_name : "";
               return (
                 <div key={slot.key} className="surface rounded-3xl p-5">
                   <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-3">
@@ -1086,7 +1084,7 @@ export default function CalculatorPage() {
                       className="min-w-0 text-left"
                     >
                       <h2 className="text-xl font-semibold">{slot.label}</h2>
-                      <p className="muted max-w-full break-words text-sm">{meal?.meal_name || "No meal selected yet."}</p>
+                      <p className="muted max-w-full break-words text-sm">{savedMealName || "No saved meal selected yet."}</p>
                     </button>
                     {meal && (
                       <div className="grid min-w-0 w-full grid-cols-[44px_44px_minmax(0,1fr)] gap-2 md:grid-cols-[44px_44px_minmax(16rem,1fr)_auto]">
@@ -1101,7 +1099,7 @@ export default function CalculatorPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setSaveMealDraft({ meal, name: meal.meal_name })}
+                          onClick={() => setSaveMealDraft({ meal, name: savedMealName })}
                           className="inline-flex h-11 w-11 min-w-0 items-center justify-center rounded-xl bg-white/6 text-sm"
                           aria-label={`Save ${slot.label} meal`}
                           title="Save meal"
