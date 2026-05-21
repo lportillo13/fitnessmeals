@@ -125,3 +125,55 @@ export type ProgressLog = {
   note: string | null;
   created_at: string;
 };
+
+export type Exercise = {
+  id: string;
+  profile_id: string | null;
+  name: string;
+  muscle_group: string;
+  equipment: string | null;
+  video_url: string | null;
+  instructions: string | null;
+  is_public: boolean;
+  created_at: string;
+};
+
+export type ExerciseRoutine = {
+  id: string;
+  profile_id: string;
+  name: string;
+  focus: string | null;
+  created_at: string;
+};
+
+export type ExerciseRoutineItem = {
+  id: string;
+  routine_id: string;
+  exercise_id: string | null;
+  exercise_name: string;
+  target_sets: number;
+  target_reps: string;
+  sort_order: number;
+};
+
+export type WorkoutLog = {
+  id: string;
+  profile_id: string;
+  workout_date: string;
+  routine_id: string | null;
+  routine_name: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type WorkoutLogSet = {
+  id: string;
+  workout_log_id: string;
+  exercise_id: string | null;
+  exercise_name: string;
+  set_number: number;
+  reps: number;
+  weight_lb: number;
+  completed: boolean;
+  created_at: string;
+};

@@ -246,9 +246,12 @@ export default function ProgressPage() {
             {timeline.map((week) => (
               <div
                 key={week.label}
-                className="surface-strong grid gap-2 rounded-2xl p-4 md:grid-cols-[120px_1fr_1fr_1fr]"
+                className="surface-strong grid gap-2 rounded-2xl p-4 md:grid-cols-[140px_1fr_1fr_1fr]"
               >
-                <div className="font-semibold">{week.label}</div>
+                <div>
+                  <div className="font-semibold">{week.label}</div>
+                  <div className="muted text-sm">Weigh in: {week.recheckDate}</div>
+                </div>
                 <div>Target: {week.targetWeight.toFixed(1)} lb</div>
                 <div>{week.actualWeight != null ? `Actual: ${week.actualWeight.toFixed(1)} lb` : "No log yet"}</div>
                 <div className={week.status === "on_track" ? "text-lime-300" : week.status === "ahead" ? "text-cyan-300" : "text-rose-300"}>
@@ -306,8 +309,8 @@ function analyzeProgress(profile?: Profile, latestLog?: ProgressLog) {
 
 function buildWeeklyTimeline(profile?: Profile, logs: ProgressLog[] = []) {
   if (!profile?.plan_start_date || !profile.plan_start_weight_lb) return [];
-  const startDate = new Date(profile.plan_start_date);
-  const goalDate = new Date(profile.goal_date);
+  const startDate = parseLocalDate(profile.plan_start_date);
+  const goalDate = parseLocalDate(profile.goal_date);
   const totalDays = Math.max(1, Math.ceil((goalDate.getTime() - startDate.getTime()) / 86400000));
   const goalWeight = profile.plan_start_weight_lb - profile.goal_loss_lb;
   const totalWeeks = Math.max(1, Math.ceil(totalDays / 7));
@@ -324,7 +327,7 @@ function buildWeeklyTimeline(profile?: Profile, logs: ProgressLog[] = []) {
     const targetWeight =
       profile.plan_start_weight_lb! -
       ((profile.plan_start_weight_lb! - goalWeight) * elapsedDays) / totalDays;
-    const matchingLog = logs.find((log) => new Date(log.log_date) <= weekEnd);
+    const matchingLog = logs.find((log) => parseLocalDate(log.log_date) <= weekEnd);
     const actualWeight = matchingLog?.weight_lb;
     let status: "ahead" | "on_track" | "behind" | "pending" = "pending";
     if (actualWeight != null) {
@@ -333,10 +336,25 @@ function buildWeeklyTimeline(profile?: Profile, logs: ProgressLog[] = []) {
     }
     return {
       label: `Week ${weekNumber}`,
+      recheckDate: formatRecheckDate(weekEnd),
       targetWeight,
       actualWeight,
       status,
     };
+  });
+}
+
+function parseLocalDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return new Date(value);
+  return new Date(year, month - 1, day);
+}
+
+function formatRecheckDate(date: Date) {
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }
 

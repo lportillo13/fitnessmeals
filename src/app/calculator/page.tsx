@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, CheckCircle2, ChevronDown, ChevronUp, Plus, RefreshCw, Save, Shuffle, Trash2 } from "lucide-react";
+import { ArrowLeftRight, CheckCircle2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Plus, RefreshCw, Save, Shuffle, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   buildPlanningOptions,
@@ -38,6 +38,31 @@ function getTodayKey() {
   return new Date().toLocaleDateString("en-CA");
 }
 
+function parseDateKey(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return new Date(value);
+  return new Date(year, month - 1, day);
+}
+
+function formatDateKey(date: Date) {
+  return date.toLocaleDateString("en-CA");
+}
+
+function addDays(date: Date, dayOffset: number) {
+  const nextDate = new Date(date);
+  nextDate.setDate(date.getDate() + dayOffset);
+  return nextDate;
+}
+
+function formatPlanDateLabel(value: string) {
+  return parseDateKey(value).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export default function CalculatorPage() {
   const [foods, setFoods] = useState<Food[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -47,20 +72,24 @@ export default function CalculatorPage() {
   const [rules, setRules] = useState<MealRule[]>([]);
   const [plan, setPlan] = useState<DailyPlan | null>(null);
   const [meals, setMeals] = useState<PlannedMeal[]>([]);
-  const [checkedTodayPlan, setCheckedTodayPlan] = useState(false);
+  const [selectedPlanDate, setSelectedPlanDate] = useState(getTodayKey);
+  const [checkedSelectedPlan, setCheckedSelectedPlan] = useState(false);
   const [message, setMessage] = useState("");
   const [foodSearch, setFoodSearch] = useState("");
   const [manualFoodId, setManualFoodId] = useState("");
   const [manualMealSlot, setManualMealSlot] = useState<MealSlot>("breakfast");
   const [manualAmount, setManualAmount] = useState(1);
-  const [manualAmountMode, setManualAmountMode] = useState<"serving" | "grams">("serving");
-  const [displayAmountMode, setDisplayAmountMode] = useState<"serving" | "grams">("serving");
+  const [manualAmountMode, setManualAmountMode] = useState<"serving" | "grams">("grams");
+  const [displayAmountMode, setDisplayAmountMode] = useState<"serving" | "grams">("grams");
   const [openMealSlot, setOpenMealSlot] = useState<MealSlot | null>("breakfast");
   const [freeDay, setFreeDay] = useState(false);
   const [noRecalculate, setNoRecalculate] = useState(false);
   const [showManualAdd, setShowManualAdd] = useState(false);
   const [saveMealDraft, setSaveMealDraft] = useState<{ meal: PlannedMeal; name: string } | null>(null);
   const [motivation, setMotivation] = useState<{ message: string; tone: MotivationTone } | null>(null);
+  const todayKey = getTodayKey();
+  const isViewingToday = selectedPlanDate === todayKey;
+  const selectedPlanDateLabel = formatPlanDateLabel(selectedPlanDate);
   const visibleFoods = useMemo(
     () =>
       foods.filter(
@@ -125,31 +154,32 @@ export default function CalculatorPage() {
     if (!selectedProfileId) return;
     const timeoutId = window.setTimeout(() => {
       setFreeDay(
-        window.localStorage.getItem(`free-day:${selectedProfileId}:${getTodayKey()}`) === "true"
+        window.localStorage.getItem(`free-day:${selectedProfileId}:${selectedPlanDate}`) === "true"
       );
       setNoRecalculate(
-        window.localStorage.getItem(`no-recalculate:${selectedProfileId}:${getTodayKey()}`) === "true"
+        window.localStorage.getItem(`no-recalculate:${selectedProfileId}:${selectedPlanDate}`) === "true"
       );
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [selectedProfileId]);
+  }, [selectedProfileId, selectedPlanDate]);
 
   useEffect(() => {
-    async function loadTodayPlan() {
+    async function loadSelectedPlan() {
       if (!selectedProfileId) return;
-      setCheckedTodayPlan(false);
+      setCheckedSelectedPlan(false);
       setPlan(null);
       setMeals([]);
+      setMessage("");
       const supabase = createClient();
       const { data: planData } = await supabase
         .from("daily_plans")
         .select("*")
         .eq("profile_id", selectedProfileId)
-        .eq("plan_date", getTodayKey())
+        .eq("plan_date", selectedPlanDate)
         .maybeSingle();
 
       if (!planData) {
-        setCheckedTodayPlan(true);
+        setCheckedSelectedPlan(true);
         return;
       }
       setPlan(planData as DailyPlan);
@@ -183,11 +213,11 @@ export default function CalculatorPage() {
           loadedMeals.some((meal) => meal.meal_slot === slot.key && !meal.completed)
         )?.key || "breakfast";
       setOpenMealSlot(firstIncomplete);
-      setCheckedTodayPlan(true);
+      setCheckedSelectedPlan(true);
     }
 
-    loadTodayPlan();
-  }, [selectedProfileId]);
+    loadSelectedPlan();
+  }, [selectedProfileId, selectedPlanDate]);
 
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
   const options = useMemo(
@@ -228,7 +258,7 @@ export default function CalculatorPage() {
     )
     .slice(0, 8);
   const manualFood = visibleFoods.find((food) => food.id === manualFoodId);
-  const canUseManualGrams = Boolean(manualFood?.base_grams);
+  const canUseManualGrams = canUseGrams(manualFood);
 
   const generatePlan = useCallback(async () => {
     if (!selectedProfile) return;
@@ -245,7 +275,7 @@ export default function CalculatorPage() {
     } else {
       const { data: createdPlan, error } = await supabase
         .from("daily_plans")
-        .insert({ profile_id: selectedProfile.id, plan_date: getTodayKey() })
+        .insert({ profile_id: selectedProfile.id, plan_date: selectedPlanDate })
         .select("*")
         .single();
       if (error) {
@@ -289,16 +319,22 @@ export default function CalculatorPage() {
       }))
     );
     setOpenMealSlot("breakfast");
-    setMessage("Today's meal plan is ready.");
-  }, [selectedProfile, options, rules, visibleFoods, plan]);
+    setMessage(`${selectedPlanDateLabel} meal plan is ready.`);
+  }, [selectedProfile, options, rules, visibleFoods, plan, selectedPlanDate, selectedPlanDateLabel]);
 
   useEffect(() => {
-    if (!selectedProfile || !checkedTodayPlan || plan || options.length === 0) return;
+    if (
+      !selectedProfile ||
+      !checkedSelectedPlan ||
+      !isViewingToday ||
+      plan ||
+      options.length === 0
+    ) return;
     const timeoutId = window.setTimeout(() => {
       void generatePlan();
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [selectedProfile, checkedTodayPlan, plan, options.length, generatePlan]);
+  }, [selectedProfile, checkedSelectedPlan, isViewingToday, plan, options.length, generatePlan]);
 
   async function replaceMeal(slot: MealSlot, option: TemplateOption) {
     const meal = meals.find((candidate) => candidate.meal_slot === slot);
@@ -407,21 +443,15 @@ export default function CalculatorPage() {
 
     const food = visibleFoods.find((candidate) => candidate.id === changedItem.food_id);
     if (!food) return;
+    if (amountMode === "grams" && !canUseGrams(food)) {
+      setMessage("This food does not have a gram weight saved yet, so it can only use servings.");
+      return;
+    }
     const currentAmount = Number(changedItem.amount);
     const currentAmountMode = inferAmountMode(food, currentAmount, changedItem.amount_mode);
-    const nextAmount =
-      amountMode === "grams"
-        ? currentAmountMode === "grams"
-          ? currentAmount
-          : food.base_grams
-            ? currentAmount * Number(food.base_grams)
-            : currentAmount
-        : currentAmountMode === "serving"
-          ? currentAmount
-          : food.base_grams
-            ? currentAmount / Number(food.base_grams)
-            : currentAmount;
+    const nextAmount = convertAmountMode(food, currentAmount, currentAmountMode, amountMode);
 
+    setDisplayAmountMode(amountMode);
     await createClient()
       .from("daily_plan_items")
       .update({ amount_mode: amountMode, amount: nextAmount })
@@ -618,12 +648,15 @@ export default function CalculatorPage() {
 
   async function addManualFood() {
     if (!manualFoodId || !selectedProfile) return;
+    const selectedManualFood = visibleFoods.find((food) => food.id === manualFoodId);
+    const safeManualAmountMode =
+      manualAmountMode === "grams" && !canUseGrams(selectedManualFood) ? "serving" : manualAmountMode;
     const supabase = createClient();
     let activePlan = plan;
     if (!activePlan) {
       const { data: createdPlan, error } = await supabase
         .from("daily_plans")
-        .insert({ profile_id: selectedProfile.id, plan_date: getTodayKey() })
+        .insert({ profile_id: selectedProfile.id, plan_date: selectedPlanDate })
         .select("*")
         .single();
       if (error) {
@@ -661,7 +694,7 @@ export default function CalculatorPage() {
         daily_plan_meal_id: meal.id,
         food_id: manualFoodId,
         amount: manualAmount,
-        amount_mode: manualAmountMode,
+        amount_mode: safeManualAmountMode,
         completed: true,
       })
       .select("*")
@@ -675,6 +708,7 @@ export default function CalculatorPage() {
     setMeals(nextMeals);
     setFoodSearch("");
     setManualFoodId("");
+    setManualAmountMode("grams");
     if (!freeDay && !noRecalculate) {
       const changedIndex = plannerSlots.findIndex((slot) => slot.key === meal!.meal_slot);
       await rebalanceFutureMeals(nextMeals, changedIndex);
@@ -844,6 +878,15 @@ export default function CalculatorPage() {
     );
   }
 
+  function moveSelectedPlanDate(dayOffset: number) {
+    setSelectedPlanDate((currentDate) => {
+      const nextDate = addDays(parseDateKey(currentDate), dayOffset);
+      const today = parseDateKey(todayKey);
+      if (nextDate > today) return todayKey;
+      return formatDateKey(nextDate);
+    });
+  }
+
   return (
     <main className="app-shell">
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[1fr_380px]">
@@ -861,7 +904,57 @@ export default function CalculatorPage() {
           </div>
 
           <p className="eyebrow mb-2 text-xs font-semibold">Daily planner</p>
-          <h1 className="mb-4 text-4xl font-bold">Today&apos;s Meal Plan</h1>
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h1 className="text-4xl font-bold">Meal Plan</h1>
+              <p className="muted mt-1 text-sm">{selectedPlanDateLabel}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => moveSelectedPlanDate(-1)}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white/8"
+                aria-label="Previous day"
+                title="Previous day"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <input
+                className="h-11 rounded-xl border border-white/10 bg-white/5 px-3 text-white"
+                type="date"
+                value={selectedPlanDate}
+                max={todayKey}
+                onChange={(event) => {
+                  if (!event.target.value) return;
+                  setSelectedPlanDate(
+                    parseDateKey(event.target.value) > parseDateKey(todayKey)
+                      ? todayKey
+                      : event.target.value
+                  );
+                }}
+                aria-label="Meal plan date"
+              />
+              <button
+                type="button"
+                onClick={() => moveSelectedPlanDate(1)}
+                disabled={isViewingToday}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white/8 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Next day"
+                title="Next day"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              {!isViewingToday && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlanDate(todayKey)}
+                  className="h-11 rounded-xl bg-white/8 px-4 text-sm font-semibold"
+                >
+                  Today
+                </button>
+              )}
+            </div>
+          </div>
 
           <div className="surface relative z-40 mb-4 rounded-3xl p-5">
             <div className="flex flex-wrap gap-3">
@@ -892,7 +985,7 @@ export default function CalculatorPage() {
                     const nextValue = event.target.checked;
                     setFreeDay(nextValue);
                     window.localStorage.setItem(
-                      `free-day:${selectedProfileId}:${getTodayKey()}`,
+                      `free-day:${selectedProfileId}:${selectedPlanDate}`,
                       String(nextValue)
                     );
                   }}
@@ -907,7 +1000,7 @@ export default function CalculatorPage() {
                     const nextValue = event.target.checked;
                     setNoRecalculate(nextValue);
                     window.localStorage.setItem(
-                      `no-recalculate:${selectedProfileId}:${getTodayKey()}`,
+                      `no-recalculate:${selectedProfileId}:${selectedPlanDate}`,
                       String(nextValue)
                     );
                   }}
@@ -937,7 +1030,7 @@ export default function CalculatorPage() {
                 {foodSearch && !manualFoodId && matchingFoods.length > 0 && (
                   <div className="surface absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl shadow-2xl">
                     {matchingFoods.map((food) => (
-                      <button key={food.id} onClick={() => { setManualFoodId(food.id); setFoodSearch(food.name); setManualAmountMode(food.serving_mode === "grams" ? "grams" : "serving"); setManualAmount(food.serving_mode === "grams" ? Number(food.base_grams || 100) : 1); }} className="flex w-full justify-between px-4 py-3 text-left text-sm hover:bg-white/8">
+                      <button key={food.id} onClick={() => { const defaultAmount = getDefaultFoodAmount(food); setManualFoodId(food.id); setFoodSearch(food.name); setManualAmountMode(defaultAmount.amountMode); setManualAmount(defaultAmount.amount); }} className="flex w-full justify-between px-4 py-3 text-left text-sm hover:bg-white/8">
                         <span>{food.name}</span><span className="muted">{food.serving_label}</span>
                       </button>
                     ))}
@@ -958,17 +1051,15 @@ export default function CalculatorPage() {
                   value={manualAmountMode}
                   onChange={(event) => {
                     const nextMode = event.target.value as "serving" | "grams";
+                    if (nextMode === "grams" && !canUseManualGrams) return;
+                    const currentMode = manualAmountMode;
                     setManualAmountMode(nextMode);
                     if (!manualFood) return;
-                    setManualAmount(
-                      nextMode === "grams"
-                        ? Number(manualFood.base_grams || 1)
-                        : 1
-                    );
+                    setManualAmount(convertAmountMode(manualFood, manualAmount, currentMode, nextMode));
                   }}
                 >
                   <option value="serving">Serving</option>
-                  <option value="grams" disabled={!canUseManualGrams}>Grams</option>
+                  <option value="grams" disabled={Boolean(manualFood) && !canUseManualGrams}>Grams</option>
                 </select>
               </div>
               <button onClick={addManualFood} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold"><Plus className="h-4 w-4" />Add</button>
@@ -1144,6 +1235,31 @@ function roundQuantity(value: number) {
 
 function roundQuantityNumber(value: number) {
   return Number(value.toFixed(2));
+}
+
+function canUseGrams(food?: Pick<Food, "base_grams"> | null) {
+  return Number(food?.base_grams || 0) > 0;
+}
+
+function getDefaultFoodAmount(food: Food) {
+  if (canUseGrams(food)) {
+    return { amount: Number(food.base_grams), amountMode: "grams" as const };
+  }
+
+  return { amount: 1, amountMode: "serving" as const };
+}
+
+function convertAmountMode(
+  food: Pick<Food, "base_grams">,
+  amount: number,
+  currentMode: "serving" | "grams",
+  nextMode: "serving" | "grams"
+) {
+  if (currentMode === nextMode) return roundQuantityNumber(amount);
+  const baseGrams = Number(food.base_grams || 0);
+  if (baseGrams <= 0) return roundQuantityNumber(amount);
+
+  return roundQuantityNumber(nextMode === "grams" ? amount * baseGrams : amount / baseGrams);
 }
 
 function ItemSwapSelect({

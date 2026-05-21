@@ -109,3 +109,82 @@ set meal_slot = case
   else meal_slot
 end
 where meal_slot is null;
+
+create table if not exists public.exercise_library (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid references public.meal_profiles(id) on delete cascade,
+  name text not null,
+  muscle_group text not null,
+  equipment text,
+  video_url text,
+  instructions text,
+  is_public boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists exercise_library_profile_idx on public.exercise_library(profile_id);
+create index if not exists exercise_library_name_idx on public.exercise_library using gin (to_tsvector('english', name));
+create unique index if not exists exercise_library_public_name_idx
+  on public.exercise_library (lower(name))
+  where is_public and profile_id is null;
+
+create table if not exists public.exercise_routines (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references public.meal_profiles(id) on delete cascade,
+  name text not null,
+  focus text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.exercise_routine_items (
+  id uuid primary key default gen_random_uuid(),
+  routine_id uuid not null references public.exercise_routines(id) on delete cascade,
+  exercise_id uuid references public.exercise_library(id) on delete set null,
+  exercise_name text not null,
+  target_sets integer not null default 3 check (target_sets > 0),
+  target_reps text not null default '10',
+  sort_order integer not null default 0
+);
+
+create table if not exists public.workout_logs (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references public.meal_profiles(id) on delete cascade,
+  workout_date date not null default current_date,
+  routine_id uuid references public.exercise_routines(id) on delete set null,
+  routine_name text,
+  notes text,
+  created_at timestamptz not null default now(),
+  unique (profile_id, workout_date)
+);
+
+create table if not exists public.workout_log_sets (
+  id uuid primary key default gen_random_uuid(),
+  workout_log_id uuid not null references public.workout_logs(id) on delete cascade,
+  exercise_id uuid references public.exercise_library(id) on delete set null,
+  exercise_name text not null,
+  set_number integer not null default 1 check (set_number > 0),
+  reps integer not null default 0 check (reps >= 0),
+  weight_lb numeric not null default 0 check (weight_lb >= 0),
+  completed boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+insert into public.exercise_library (name, muscle_group, equipment, instructions, is_public)
+values
+  ('Back squat', 'Legs', 'Barbell', 'Brace, sit between the hips, keep knees tracking over toes, and drive up through the floor.', true),
+  ('Romanian deadlift', 'Hamstrings', 'Barbell or dumbbells', 'Hinge at the hips with soft knees, keep the back neutral, and stop when hamstrings are loaded.', true),
+  ('Leg press', 'Legs', 'Machine', 'Set feet about shoulder width, lower with control, and press without locking out aggressively.', true),
+  ('Walking lunge', 'Legs', 'Dumbbells or bodyweight', 'Step long enough to keep the front heel planted, lower under control, and alternate legs.', true),
+  ('Hip thrust', 'Glutes', 'Barbell or machine', 'Tuck ribs down, drive through heels, and squeeze glutes at the top.', true),
+  ('Bench press', 'Chest', 'Barbell', 'Pin shoulder blades, lower to the lower chest, and press back over the shoulders.', true),
+  ('Incline dumbbell press', 'Chest', 'Dumbbells', 'Use a slight incline, lower dumbbells beside upper chest, and press without shrugging.', true),
+  ('Push-up', 'Chest', 'Bodyweight', 'Keep a straight line from shoulders to ankles and lower chest toward the floor.', true),
+  ('Lat pulldown', 'Back', 'Cable machine', 'Pull elbows down toward ribs and avoid leaning back excessively.', true),
+  ('Seated cable row', 'Back', 'Cable machine', 'Reach forward with control, then row elbows behind the body while keeping the torso stable.', true),
+  ('Dumbbell shoulder press', 'Shoulders', 'Dumbbells', 'Press from shoulder height while keeping ribs stacked over hips.', true),
+  ('Lateral raise', 'Shoulders', 'Dumbbells or cable', 'Raise arms slightly forward of the body and stop around shoulder height.', true),
+  ('Biceps curl', 'Arms', 'Dumbbells or cable', 'Keep elbows quiet and curl without swinging.', true),
+  ('Triceps rope pressdown', 'Arms', 'Cable machine', 'Keep elbows pinned and extend fully at the bottom.', true),
+  ('Plank', 'Core', 'Bodyweight', 'Brace abs, squeeze glutes, and hold a straight line.', true),
+  ('Cable crunch', 'Core', 'Cable machine', 'Round through the upper back and pull ribs toward pelvis.', true)
+on conflict do nothing;
