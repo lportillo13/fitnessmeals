@@ -958,9 +958,11 @@ export default function CalculatorPage() {
 
           <div className="surface relative z-40 mb-4 rounded-3xl p-5">
             <div className="flex flex-wrap gap-3">
-              <button onClick={generatePlan} className="inline-flex items-center gap-2 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black">
-                <RefreshCw className="h-4 w-4" /> {plan ? "Redesign meal plan" : "Create meal plan"}
-              </button>
+              {!plan && (
+                <button onClick={generatePlan} className="inline-flex items-center gap-2 rounded-2xl bg-lime-300 px-5 py-3 font-semibold text-black">
+                  <RefreshCw className="h-4 w-4" /> Create meal plan
+                </button>
+              )}
               <div className="inline-flex rounded-2xl bg-white/8 p-1 text-sm font-semibold">
                 <button
                   type="button"
@@ -977,36 +979,6 @@ export default function CalculatorPage() {
                   Grams
                 </button>
               </div>
-              <label className="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-4 py-3 text-sm font-semibold">
-                <input
-                  type="checkbox"
-                  checked={freeDay}
-                  onChange={(event) => {
-                    const nextValue = event.target.checked;
-                    setFreeDay(nextValue);
-                    window.localStorage.setItem(
-                      `free-day:${selectedProfileId}:${selectedPlanDate}`,
-                      String(nextValue)
-                    );
-                  }}
-                />
-                Free day
-              </label>
-              <label className="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-4 py-3 text-sm font-semibold">
-                <input
-                  type="checkbox"
-                  checked={noRecalculate}
-                  onChange={(event) => {
-                    const nextValue = event.target.checked;
-                    setNoRecalculate(nextValue);
-                    window.localStorage.setItem(
-                      `no-recalculate:${selectedProfileId}:${selectedPlanDate}`,
-                      String(nextValue)
-                    );
-                  }}
-                />
-                No recalculate
-              </label>
             </div>
             {message && <p className="muted mt-3 text-sm">{message}</p>}
           </div>
