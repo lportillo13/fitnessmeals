@@ -13,6 +13,8 @@ export type Food = {
   carbs_g: number;
   fat_g: number;
   fiber_g: number;
+  sugar_alcohol_g: number;
+  allulose_g: number;
   is_public: boolean;
   is_available: boolean;
   max_amount: number | null;

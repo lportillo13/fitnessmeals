@@ -20,7 +20,7 @@ export default function MacroSummary({ totals, targets }: Props) {
   const rows = [
     { label: "Calories", current: totals.calories, target: targets.calories, unit: "", icon: Flame, color: "from-lime-300 to-emerald-400" },
     { label: "Protein", current: totals.protein, target: targets.protein, unit: "g", icon: Beef, color: "from-cyan-300 to-sky-400" },
-    { label: "Carbs", current: totals.carbs, target: targets.carbs, unit: "g", icon: Wheat, color: "from-fuchsia-300 to-violet-400" },
+    { label: "Net Carbs", current: totals.carbs, target: targets.carbs, unit: "g", icon: Wheat, color: "from-fuchsia-300 to-violet-400" },
     { label: "Fat", current: totals.fat, target: targets.fat, unit: "g", icon: Droplets, color: "from-amber-300 to-orange-400" },
   ];
 

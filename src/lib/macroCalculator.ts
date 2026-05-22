@@ -42,13 +42,17 @@ export function calculateFoodMacros(
     mode === "grams"
       ? amount / Number(food.base_grams || 100)
       : amount;
+  const totalCarbs = food.carbs_g * multiplier;
+  const fiber = food.fiber_g * multiplier;
+  const sugarAlcohol = Number(food.sugar_alcohol_g || 0) * multiplier;
+  const allulose = Number(food.allulose_g || 0) * multiplier;
 
   return {
     calories: food.calories * multiplier,
     protein: food.protein_g * multiplier,
-    carbs: food.carbs_g * multiplier,
+    carbs: Math.max(0, totalCarbs - fiber - sugarAlcohol - allulose),
     fat: food.fat_g * multiplier,
-    fiber: food.fiber_g * multiplier,
+    fiber,
   };
 }
 

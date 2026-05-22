@@ -11,7 +11,7 @@ import type { Food, Profile } from "@/lib/types";
 
 type EditableFoodFields = Pick<
   Food,
-  "category" | "calories" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g" | "max_amount" | "allowed_meal_slots" | "serving_mode" | "serving_label" | "base_grams"
+  "category" | "calories" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g" | "sugar_alcohol_g" | "allulose_g" | "max_amount" | "allowed_meal_slots" | "serving_mode" | "serving_label" | "base_grams"
 >;
 
 type FoodDraft = Omit<Food, "id" | "user_id" | "profile_id" | "is_public">;
@@ -32,6 +32,10 @@ type OpenFoodFactsProduct = {
     fat_100g?: number;
     fiber_serving?: number;
     fiber_100g?: number;
+    polyols_serving?: number;
+    polyols_100g?: number;
+    allulose_serving?: number;
+    allulose_100g?: number;
   };
 };
 
@@ -42,6 +46,8 @@ type ScannedUnitBasis = {
   carbsPer100g: number;
   fatPer100g: number;
   fiberPer100g: number;
+  sugarAlcoholPer100g: number;
+  allulosePer100g: number;
 };
 
 type FoodGoalRating = "great" | "medium" | "bad";
@@ -58,6 +64,8 @@ const fallbackDraft: FoodDraft = {
   carbs_g: 0,
   fat_g: 0,
   fiber_g: 0,
+  sugar_alcohol_g: 0,
+  allulose_g: 0,
   is_available: true,
   max_amount: null,
   allowed_meal_slots: ["breakfast", "snack_1", "lunch", "snack_2", "dinner"],
@@ -152,6 +160,8 @@ export default function FoodsPage() {
       carbs_g: food.carbs_g,
       fat_g: food.fat_g,
       fiber_g: food.fiber_g,
+      sugar_alcohol_g: Number(food.sugar_alcohol_g || 0),
+      allulose_g: Number(food.allulose_g || 0),
       max_amount: food.max_amount,
       allowed_meal_slots: food.allowed_meal_slots || ["breakfast", "snack_1", "lunch", "snack_2", "dinner"],
       serving_mode: food.serving_mode,
@@ -283,6 +293,16 @@ export default function FoodsPage() {
               product.nutriments?.fiber_serving,
               servingQuantity
             ),
+            sugarAlcoholPer100g: per100gValue(
+              product.nutriments?.polyols_100g,
+              product.nutriments?.polyols_serving,
+              servingQuantity
+            ),
+            allulosePer100g: per100gValue(
+              product.nutriments?.allulose_100g,
+              product.nutriments?.allulose_serving,
+              servingQuantity
+            ),
           }
         : null;
 
@@ -313,6 +333,12 @@ export default function FoodsPage() {
         ),
         fiber_g: numberOrZero(
           hasServingMacros ? product.nutriments?.fiber_serving : product.nutriments?.fiber_100g
+        ),
+        sugar_alcohol_g: numberOrZero(
+          hasServingMacros ? product.nutriments?.polyols_serving : product.nutriments?.polyols_100g
+        ),
+        allulose_g: numberOrZero(
+          hasServingMacros ? product.nutriments?.allulose_serving : product.nutriments?.allulose_100g
         ),
       });
       setScannedUnitBasis(unitBasis);
@@ -416,6 +442,12 @@ export default function FoodsPage() {
       fiber_g: numberOrZero(
         hasServingMacros ? product.nutriments?.fiber_serving : product.nutriments?.fiber_100g
       ),
+      sugar_alcohol_g: numberOrZero(
+        hasServingMacros ? product.nutriments?.polyols_serving : product.nutriments?.polyols_100g
+      ),
+      allulose_g: numberOrZero(
+        hasServingMacros ? product.nutriments?.allulose_serving : product.nutriments?.allulose_100g
+      ),
     });
     setScannedUnitBasis(null);
     setProductMatches([]);
@@ -462,6 +494,8 @@ export default function FoodsPage() {
             carbs_g: scalePer100g(basis.carbsPer100g, grams),
             fat_g: scalePer100g(basis.fatPer100g, grams),
             fiber_g: scalePer100g(basis.fiberPer100g, grams),
+            sugar_alcohol_g: scalePer100g(basis.sugarAlcoholPer100g, grams),
+            allulose_g: scalePer100g(basis.allulosePer100g, grams),
           }
         : current
     );
@@ -669,6 +703,9 @@ export default function FoodsPage() {
                     {draftFood.calories} cal · {draftFood.protein_g}g protein · {draftFood.carbs_g}g
                     carbs · {draftFood.fat_g}g fat
                   </p>
+                  <p className="muted mt-1 text-sm">
+                    {netCarbsForFood(draftFood)}g net carbs after fiber, sugar alcohol, and allulose
+                  </p>
                   <label className="mt-3 block max-w-xs">
                     <span className="text-sm font-medium">Food type</span>
                     <select
@@ -810,6 +847,7 @@ export default function FoodsPage() {
                         <th className="p-3">Calories</th>
                         <th className="p-3">Protein</th>
                         <th className="p-3">Carbs</th>
+                        <th className="p-3">Net</th>
                         <th className="p-3">Fat</th>
                 <th className="p-3">Fiber</th>
                         <th className="p-3">Max</th>
@@ -832,6 +870,7 @@ export default function FoodsPage() {
                     <td className="p-3">{food.calories}</td>
                     <td className="p-3">{food.protein_g} g</td>
                     <td className="p-3">{food.carbs_g} g</td>
+                    <td className="p-3">{netCarbsForFood(food)} g</td>
                     <td className="p-3">{food.fat_g} g</td>
                     <td className="p-3">{food.fiber_g} g</td>
                     <td className="p-3">{food.max_amount ?? "—"}{food.max_amount != null && food.serving_mode === "grams" ? " g" : ""}</td>
@@ -969,9 +1008,11 @@ export default function FoodsPage() {
               <ModalNumber label="Calories" value={editValues.calories} onChange={(value) => setEditValues((current) => current ? { ...current, calories: value } : current)} />
               <ModalNumber label="Max amount" value={editValues.max_amount ?? 0} onChange={(value) => setEditValues((current) => current ? { ...current, max_amount: value || null } : current)} />
               <ModalNumber label="Protein g" value={editValues.protein_g} onChange={(value) => setEditValues((current) => current ? { ...current, protein_g: value } : current)} />
-              <ModalNumber label="Carbs g" value={editValues.carbs_g} onChange={(value) => setEditValues((current) => current ? { ...current, carbs_g: value } : current)} />
+              <ModalNumber label="Total carbs g" value={editValues.carbs_g} onChange={(value) => setEditValues((current) => current ? { ...current, carbs_g: value } : current)} />
               <ModalNumber label="Fat g" value={editValues.fat_g} onChange={(value) => setEditValues((current) => current ? { ...current, fat_g: value } : current)} />
               <ModalNumber label="Fiber g" value={editValues.fiber_g} onChange={(value) => setEditValues((current) => current ? { ...current, fiber_g: value } : current)} />
+              <ModalNumber label="Sugar alcohol g" value={editValues.sugar_alcohol_g} onChange={(value) => setEditValues((current) => current ? { ...current, sugar_alcohol_g: value } : current)} />
+              <ModalNumber label="Allulose g" value={editValues.allulose_g} onChange={(value) => setEditValues((current) => current ? { ...current, allulose_g: value } : current)} />
             </div>
             <div className="mt-4">
               <div className="mb-2 text-sm font-medium">Allowed meals</div>
@@ -1169,6 +1210,18 @@ function scalePer100g(valuePer100g: number, grams: number) {
   return roundToOneDecimal((valuePer100g * grams) / 100);
 }
 
+function netCarbsForFood(food: Pick<Food, "carbs_g" | "fiber_g" | "sugar_alcohol_g" | "allulose_g">) {
+  return roundToOneDecimal(
+    Math.max(
+      0,
+      Number(food.carbs_g || 0) -
+        Number(food.fiber_g || 0) -
+        Number(food.sugar_alcohol_g || 0) -
+        Number(food.allulose_g || 0)
+    )
+  );
+}
+
 function parseServingGrams(servingSize?: string) {
   const match = servingSize?.match(/(\d+(?:\.\d+)?)\s*g\b/i);
   return match ? Number(match[1]) : 0;
@@ -1232,6 +1285,8 @@ function toImportedFoodRow(
     carbs_g: food.carbs_g,
     fat_g: food.fat_g,
     fiber_g: food.fiber_g,
+    sugar_alcohol_g: Number(food.sugar_alcohol_g || 0),
+    allulose_g: Number(food.allulose_g || 0),
     is_available: food.is_available,
     max_amount: food.max_amount,
     allowed_meal_slots: food.allowed_meal_slots,
