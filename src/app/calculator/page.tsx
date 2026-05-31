@@ -34,6 +34,20 @@ type PlannedMeal = DailyPlanMeal & {
   items: DailyPlanItem[];
 };
 
+type OneTimeFoodDraft = {
+  name: string;
+  category: Food["category"];
+  servingLabel: string;
+  amount: number;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  sugarAlcohol: number;
+  allulose: number;
+};
+
 function getTodayKey() {
   return new Date().toLocaleDateString("en-CA");
 }
@@ -77,9 +91,23 @@ export default function CalculatorPage() {
   const [message, setMessage] = useState("");
   const [foodSearch, setFoodSearch] = useState("");
   const [manualFoodId, setManualFoodId] = useState("");
+  const [manualAddMode, setManualAddMode] = useState<"saved" | "oneTime">("saved");
   const [manualMealSlot, setManualMealSlot] = useState<MealSlot>("breakfast");
   const [manualAmount, setManualAmount] = useState(1);
   const [manualAmountMode, setManualAmountMode] = useState<"serving" | "grams">("grams");
+  const [oneTimeFood, setOneTimeFood] = useState<OneTimeFoodDraft>({
+    name: "",
+    category: "other",
+    servingLabel: "serving",
+    amount: 1,
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+    fiber: 0,
+    sugarAlcohol: 0,
+    allulose: 0,
+  });
   const [displayAmountMode, setDisplayAmountMode] = useState<"serving" | "grams">("grams");
   const [openMealSlot, setOpenMealSlot] = useState<MealSlot | null>("breakfast");
   const [freeDay, setFreeDay] = useState(false);
@@ -236,7 +264,7 @@ export default function CalculatorPage() {
       meals.flatMap((meal) =>
         meal.items.flatMap((item) => {
           if (!item.completed) return [];
-          const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
+          const food = resolvePlanItemFood(item, visibleFoods);
           return food
             ? [
                 {
@@ -441,7 +469,7 @@ export default function CalculatorPage() {
     const changedItem = changedMeal?.items.find((item) => item.id === itemId);
     if (!changedMeal || !changedItem) return;
 
-    const food = visibleFoods.find((candidate) => candidate.id === changedItem.food_id);
+    const food = resolvePlanItemFood(changedItem, visibleFoods);
     if (!food) return;
     if (amountMode === "grams" && !canUseGrams(food)) {
       setMessage("This food does not have a gram weight saved yet, so it can only use servings.");
@@ -559,7 +587,7 @@ export default function CalculatorPage() {
     );
     const lockedFoods = lockedMeals.flatMap((meal) =>
       meal.items.flatMap((item) => {
-          const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
+          const food = resolvePlanItemFood(item, visibleFoods);
           return food
             ? [
                 {
@@ -646,11 +674,9 @@ export default function CalculatorPage() {
     }
   }
 
-  async function addManualFood() {
-    if (!manualFoodId || !selectedProfile) return;
+  async function ensureManualMeal() {
+    if (!selectedProfile) return null;
     const selectedManualFood = visibleFoods.find((food) => food.id === manualFoodId);
-    const safeManualAmountMode =
-      manualAmountMode === "grams" && !canUseGrams(selectedManualFood) ? "serving" : manualAmountMode;
     const supabase = createClient();
     let activePlan = plan;
     if (!activePlan) {
@@ -688,6 +714,32 @@ export default function CalculatorPage() {
       meal = { ...(createdMeal as DailyPlanMeal), items: [] };
     }
 
+    return { supabase, meal, selectedManualFood };
+  }
+
+  function addItemToMealState(meal: PlannedMeal, item: DailyPlanItem) {
+    const hasExistingMeal = meals.some((entry) => entry.id === meal.id);
+    const nextMeals = hasExistingMeal
+      ? meals.map((entry) =>
+          entry.id === meal.id ? { ...entry, items: [...entry.items, item] } : entry
+        )
+      : [...meals, { ...meal, items: [item] }];
+    setMeals(nextMeals);
+    return nextMeals;
+  }
+
+  async function addManualFood() {
+    if (manualAddMode === "oneTime") {
+      await addOneTimeFood();
+      return;
+    }
+    if (!manualFoodId || !selectedProfile) return;
+    const ensured = await ensureManualMeal();
+    if (!ensured) return;
+    const { supabase, meal, selectedManualFood } = ensured;
+    const safeManualAmountMode =
+      manualAmountMode === "grams" && !canUseGrams(selectedManualFood) ? "serving" : manualAmountMode;
+
     const { data } = await supabase
       .from("daily_plan_items")
       .insert({
@@ -699,18 +751,77 @@ export default function CalculatorPage() {
       })
       .select("*")
       .single();
-    const hasExistingMeal = meals.some((entry) => entry.id === meal.id);
-    const nextMeals = hasExistingMeal
-      ? meals.map((entry) =>
-          entry.id === meal.id ? { ...entry, items: [...entry.items, data as DailyPlanItem] } : entry
-        )
-      : [...meals, { ...meal, items: [data as DailyPlanItem] }];
-    setMeals(nextMeals);
+    const nextMeals = addItemToMealState(meal, data as DailyPlanItem);
     setFoodSearch("");
     setManualFoodId("");
     setManualAmountMode("grams");
     if (!freeDay && !noRecalculate) {
       const changedIndex = plannerSlots.findIndex((slot) => slot.key === meal!.meal_slot);
+      await rebalanceFutureMeals(nextMeals, changedIndex);
+    }
+  }
+
+  async function addOneTimeFood() {
+    if (!selectedProfile) return;
+    const trimmedName = oneTimeFood.name.trim();
+    if (!trimmedName) {
+      setMessage("Add a name for the one-time food.");
+      return;
+    }
+    if (oneTimeFood.amount <= 0) {
+      setMessage("Add an amount greater than zero.");
+      return;
+    }
+    const ensured = await ensureManualMeal();
+    if (!ensured) return;
+    const { supabase, meal } = ensured;
+    const { data, error } = await supabase
+      .from("daily_plan_items")
+      .insert({
+        daily_plan_meal_id: meal.id,
+        food_id: null,
+        amount: oneTimeFood.amount,
+        amount_mode: "serving",
+        completed: true,
+        custom_food_name: trimmedName,
+        custom_food_brand: null,
+        custom_food_category: oneTimeFood.category,
+        custom_serving_mode: "unit",
+        custom_serving_label: oneTimeFood.servingLabel.trim() || "serving",
+        custom_base_grams: null,
+        custom_calories: oneTimeFood.calories,
+        custom_protein_g: oneTimeFood.protein,
+        custom_carbs_g: oneTimeFood.carbs,
+        custom_fat_g: oneTimeFood.fat,
+        custom_fiber_g: oneTimeFood.fiber,
+        custom_sugar_alcohol_g: oneTimeFood.sugarAlcohol,
+        custom_allulose_g: oneTimeFood.allulose,
+      })
+      .select("*")
+      .single();
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    const nextMeals = addItemToMealState(meal, data as DailyPlanItem);
+    setOneTimeFood((current) => ({
+      ...current,
+      name: "",
+      servingLabel: "serving",
+      amount: 1,
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      fiber: 0,
+      sugarAlcohol: 0,
+      allulose: 0,
+    }));
+    setMessage(`${trimmedName} was added only to ${selectedPlanDateLabel}.`);
+    if (!freeDay && !noRecalculate) {
+      const changedIndex = plannerSlots.findIndex((slot) => slot.key === meal.meal_slot);
       await rebalanceFutureMeals(nextMeals, changedIndex);
     }
   }
@@ -724,6 +835,10 @@ export default function CalculatorPage() {
     const trimmedMealName = mealName.trim();
     if (!trimmedMealName) {
       setMessage("Add a meal name before saving this meal.");
+      return;
+    }
+    if (meal.items.some((item) => !item.food_id)) {
+      setMessage("One-time foods can stay in your daily plan, but saved meals can only use foods from your food list.");
       return;
     }
 
@@ -744,10 +859,10 @@ export default function CalculatorPage() {
     }
 
     const rows = meal.items.map((item) => {
-      const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
+      const food = resolvePlanItemFood(item, visibleFoods);
       return {
         meal_template_id: template.id,
-        food_id: item.food_id,
+        food_id: item.food_id!,
         amount: Number(item.amount),
         amount_mode: food ? inferAmountMode(food, Number(item.amount), item.amount_mode) : item.amount_mode,
       };
@@ -790,7 +905,7 @@ export default function CalculatorPage() {
 
   async function swapItemFood(item: DailyPlanItem, replacementFoodId: string) {
     const meal = meals.find((entry) => entry.items.some((candidate) => candidate.id === item.id));
-    const currentFood = visibleFoods.find((food) => food.id === item.food_id);
+    const currentFood = resolvePlanItemFood(item, visibleFoods);
     const replacementFood = visibleFoods.find((food) => food.id === replacementFoodId);
     if (!meal || !currentFood || !replacementFood) return;
     if (!["carb", "protein", "fat"].includes(currentFood.category)) return;
@@ -823,14 +938,49 @@ export default function CalculatorPage() {
 
     await createClient()
       .from("daily_plan_items")
-      .update({ food_id: replacementFood.id, amount: nextAmount, amount_mode: replacementAmountMode })
+      .update({
+        food_id: replacementFood.id,
+        amount: nextAmount,
+        amount_mode: replacementAmountMode,
+        custom_food_name: null,
+        custom_food_brand: null,
+        custom_food_category: null,
+        custom_serving_mode: null,
+        custom_serving_label: null,
+        custom_base_grams: null,
+        custom_calories: null,
+        custom_protein_g: null,
+        custom_carbs_g: null,
+        custom_fat_g: null,
+        custom_fiber_g: null,
+        custom_sugar_alcohol_g: null,
+        custom_allulose_g: null,
+      })
       .eq("id", item.id);
 
     const nextMeals = meals.map((entry) => ({
       ...entry,
       items: entry.items.map((candidate) =>
         candidate.id === item.id
-          ? { ...candidate, food_id: replacementFood.id, amount: nextAmount, amount_mode: replacementAmountMode }
+          ? {
+              ...candidate,
+              food_id: replacementFood.id,
+              amount: nextAmount,
+              amount_mode: replacementAmountMode,
+              custom_food_name: null,
+              custom_food_brand: null,
+              custom_food_category: null,
+              custom_serving_mode: null,
+              custom_serving_label: null,
+              custom_base_grams: null,
+              custom_calories: null,
+              custom_protein_g: null,
+              custom_carbs_g: null,
+              custom_fat_g: null,
+              custom_fiber_g: null,
+              custom_sugar_alcohol_g: null,
+              custom_allulose_g: null,
+            }
           : candidate
       ),
     }));
@@ -993,48 +1143,117 @@ export default function CalculatorPage() {
               {showManualAdd ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
             </button>
             {showManualAdd && (
-            <div className="mt-4 grid gap-3 md:grid-cols-[160px_1fr_120px_120px_auto]">
-              <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={manualMealSlot} onChange={(event) => setManualMealSlot(event.target.value as MealSlot)}>
-                {plannerSlots.map((slot) => <option key={slot.key} value={slot.key}>{slot.label}</option>)}
-              </select>
-              <div className="relative">
-                <input className="w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white" placeholder="Search food" value={foodSearch} onChange={(event) => { setFoodSearch(event.target.value); setManualFoodId(""); }} />
-                {foodSearch && !manualFoodId && matchingFoods.length > 0 && (
-                  <div className="surface absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl shadow-2xl">
-                    {matchingFoods.map((food) => (
-                      <button key={food.id} onClick={() => { const defaultAmount = getDefaultFoodAmount(food); setManualFoodId(food.id); setFoodSearch(food.name); setManualAmountMode(defaultAmount.amountMode); setManualAmount(defaultAmount.amount); }} className="flex w-full justify-between px-4 py-3 text-left text-sm hover:bg-white/8">
-                        <span>{food.name}</span><span className="muted">{food.serving_label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="grid gap-2 sm:grid-cols-[1fr_120px] md:contents">
-                <input
-                  className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
-                  type="number"
-                  min="0"
-                  step={manualAmountMode === "grams" ? "5" : "0.25"}
-                  value={manualAmount}
-                  onChange={(event) => setManualAmount(Number(event.target.value))}
-                />
-                <select
-                  className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
-                  value={manualAmountMode}
-                  onChange={(event) => {
-                    const nextMode = event.target.value as "serving" | "grams";
-                    if (nextMode === "grams" && !canUseManualGrams) return;
-                    const currentMode = manualAmountMode;
-                    setManualAmountMode(nextMode);
-                    if (!manualFood) return;
-                    setManualAmount(convertAmountMode(manualFood, manualAmount, currentMode, nextMode));
-                  }}
+            <div className="mt-4 space-y-3">
+              <div className="inline-flex rounded-2xl bg-white/8 p-1 text-sm font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setManualAddMode("saved")}
+                  className={`rounded-xl px-4 py-2 ${manualAddMode === "saved" ? "bg-lime-300 text-black" : "text-white"}`}
                 >
-                  <option value="serving">Serving</option>
-                  <option value="grams" disabled={Boolean(manualFood) && !canUseManualGrams}>Grams</option>
-                </select>
+                  Saved food
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualAddMode("oneTime")}
+                  className={`rounded-xl px-4 py-2 ${manualAddMode === "oneTime" ? "bg-lime-300 text-black" : "text-white"}`}
+                >
+                  One-time food
+                </button>
               </div>
-              <button onClick={addManualFood} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold"><Plus className="h-4 w-4" />Add</button>
+
+              {manualAddMode === "saved" ? (
+                <div className="grid gap-3 md:grid-cols-[160px_1fr_120px_120px_auto]">
+                  <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={manualMealSlot} onChange={(event) => setManualMealSlot(event.target.value as MealSlot)}>
+                    {plannerSlots.map((slot) => <option key={slot.key} value={slot.key}>{slot.label}</option>)}
+                  </select>
+                  <div className="relative">
+                    <input className="w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-white" placeholder="Search food" value={foodSearch} onChange={(event) => { setFoodSearch(event.target.value); setManualFoodId(""); }} />
+                    {foodSearch && !manualFoodId && matchingFoods.length > 0 && (
+                      <div className="surface absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl shadow-2xl">
+                        {matchingFoods.map((food) => (
+                          <button key={food.id} onClick={() => { const defaultAmount = getDefaultFoodAmount(food); setManualFoodId(food.id); setFoodSearch(food.name); setManualAmountMode(defaultAmount.amountMode); setManualAmount(defaultAmount.amount); }} className="flex w-full justify-between px-4 py-3 text-left text-sm hover:bg-white/8">
+                            <span>{food.name}</span><span className="muted">{food.serving_label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-[1fr_120px] md:contents">
+                    <input
+                      className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                      type="number"
+                      min="0"
+                      step={manualAmountMode === "grams" ? "5" : "0.25"}
+                      value={manualAmount}
+                      onChange={(event) => setManualAmount(Number(event.target.value))}
+                    />
+                    <select
+                      className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                      value={manualAmountMode}
+                      onChange={(event) => {
+                        const nextMode = event.target.value as "serving" | "grams";
+                        if (nextMode === "grams" && !canUseManualGrams) return;
+                        const currentMode = manualAmountMode;
+                        setManualAmountMode(nextMode);
+                        if (!manualFood) return;
+                        setManualAmount(convertAmountMode(manualFood, manualAmount, currentMode, nextMode));
+                      }}
+                    >
+                      <option value="serving">Serving</option>
+                      <option value="grams" disabled={Boolean(manualFood) && !canUseManualGrams}>Grams</option>
+                    </select>
+                  </div>
+                  <button onClick={addManualFood} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold"><Plus className="h-4 w-4" />Add</button>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  <div className="grid gap-3 md:grid-cols-[160px_1fr_150px_150px]">
+                    <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={manualMealSlot} onChange={(event) => setManualMealSlot(event.target.value as MealSlot)}>
+                      {plannerSlots.map((slot) => <option key={slot.key} value={slot.key}>{slot.label}</option>)}
+                    </select>
+                    <input
+                      className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                      placeholder="Food name"
+                      value={oneTimeFood.name}
+                      onChange={(event) => setOneTimeFood((current) => ({ ...current, name: event.target.value }))}
+                    />
+                    <select
+                      className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                      value={oneTimeFood.category}
+                      onChange={(event) => setOneTimeFood((current) => ({ ...current, category: event.target.value as Food["category"] }))}
+                    >
+                      {foodCategoryOptions.map((category) => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
+                    <input
+                      className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                      placeholder="Serving label"
+                      value={oneTimeFood.servingLabel}
+                      onChange={(event) => setOneTimeFood((current) => ({ ...current, servingLabel: event.target.value }))}
+                    />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[110px_repeat(7,minmax(0,1fr))_auto]">
+                    <input
+                      className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                      type="number"
+                      min="0"
+                      step="0.25"
+                      placeholder="Amount"
+                      value={oneTimeFood.amount}
+                      onChange={(event) => setOneTimeFood((current) => ({ ...current, amount: Number(event.target.value) }))}
+                    />
+                    <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="1" placeholder="Cal" value={oneTimeFood.calories} onChange={(event) => setOneTimeFood((current) => ({ ...current, calories: Number(event.target.value) }))} />
+                    <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="1" placeholder="Protein" value={oneTimeFood.protein} onChange={(event) => setOneTimeFood((current) => ({ ...current, protein: Number(event.target.value) }))} />
+                    <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="1" placeholder="Carbs" value={oneTimeFood.carbs} onChange={(event) => setOneTimeFood((current) => ({ ...current, carbs: Number(event.target.value) }))} />
+                    <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="1" placeholder="Fat" value={oneTimeFood.fat} onChange={(event) => setOneTimeFood((current) => ({ ...current, fat: Number(event.target.value) }))} />
+                    <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="1" placeholder="Fiber" value={oneTimeFood.fiber} onChange={(event) => setOneTimeFood((current) => ({ ...current, fiber: Number(event.target.value) }))} />
+                    <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="1" placeholder="Sugar alc" value={oneTimeFood.sugarAlcohol} onChange={(event) => setOneTimeFood((current) => ({ ...current, sugarAlcohol: Number(event.target.value) }))} />
+                    <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="1" placeholder="Allulose" value={oneTimeFood.allulose} onChange={(event) => setOneTimeFood((current) => ({ ...current, allulose: Number(event.target.value) }))} />
+                    <button onClick={addManualFood} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold"><Plus className="h-4 w-4" />Add</button>
+                  </div>
+                </div>
+              )}
             </div>
             )}
           </div>
@@ -1097,7 +1316,7 @@ export default function CalculatorPage() {
                   {openMealSlot === slot.key && meal?.items.length ? (
                     <div className="space-y-2">
                       {meal.items.map((item) => {
-              const food = visibleFoods.find((candidate) => candidate.id === item.food_id);
+              const food = resolvePlanItemFood(item, visibleFoods);
                         if (!food) return null;
               const displayAmount = getDisplayItemAmount(item, food, displayAmountMode);
               const swapCandidates = visibleFoods.filter(
@@ -1197,6 +1416,46 @@ function exceedsTargets(totals: ReturnType<typeof calculateDailyTotals>, profile
     totals.carbs > profile.carbs_target ||
     totals.fat > profile.fat_target
   );
+}
+
+const foodCategoryOptions: Food["category"][] = [
+  "protein",
+  "carb",
+  "fat",
+  "fruit",
+  "snack",
+  "drink",
+  "other",
+];
+
+function resolvePlanItemFood(item: DailyPlanItem, foods: Food[]) {
+  if (item.food_id) {
+    return foods.find((candidate) => candidate.id === item.food_id) || null;
+  }
+  if (!item.custom_food_name) return null;
+
+  return {
+    id: `one-time-${item.id}`,
+    user_id: null,
+    profile_id: null,
+    name: item.custom_food_name,
+    brand: item.custom_food_brand || null,
+    category: item.custom_food_category || "other",
+    serving_mode: item.custom_serving_mode || "unit",
+    serving_label: item.custom_serving_label || "serving",
+    base_grams: item.custom_base_grams ?? null,
+    calories: Number(item.custom_calories || 0),
+    protein_g: Number(item.custom_protein_g || 0),
+    carbs_g: Number(item.custom_carbs_g || 0),
+    fat_g: Number(item.custom_fat_g || 0),
+    fiber_g: Number(item.custom_fiber_g || 0),
+    sugar_alcohol_g: Number(item.custom_sugar_alcohol_g || 0),
+    allulose_g: Number(item.custom_allulose_g || 0),
+    is_public: false,
+    is_available: true,
+    max_amount: null,
+    allowed_meal_slots: [],
+  } satisfies Food;
 }
 
 function roundQuantity(value: number) {

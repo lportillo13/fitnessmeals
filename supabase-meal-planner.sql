@@ -90,6 +90,31 @@ alter table public.daily_plan_items
 alter table public.daily_plan_items
   add column if not exists completed boolean not null default false;
 
+alter table public.daily_plan_items
+  alter column food_id drop not null,
+  add column if not exists custom_food_name text,
+  add column if not exists custom_food_brand text,
+  add column if not exists custom_food_category text
+    check (custom_food_category in ('protein', 'carb', 'fat', 'fruit', 'snack', 'drink', 'other')),
+  add column if not exists custom_serving_mode text
+    check (custom_serving_mode in ('unit', 'grams')),
+  add column if not exists custom_serving_label text,
+  add column if not exists custom_base_grams numeric,
+  add column if not exists custom_calories numeric,
+  add column if not exists custom_protein_g numeric,
+  add column if not exists custom_carbs_g numeric,
+  add column if not exists custom_fat_g numeric,
+  add column if not exists custom_fiber_g numeric,
+  add column if not exists custom_sugar_alcohol_g numeric,
+  add column if not exists custom_allulose_g numeric;
+
+alter table public.daily_plan_items
+  drop constraint if exists daily_plan_items_food_reference_check;
+
+alter table public.daily_plan_items
+  add constraint daily_plan_items_food_reference_check
+  check (food_id is not null or custom_food_name is not null);
+
 create table if not exists public.progress_logs (
   id uuid primary key default gen_random_uuid(),
   profile_id uuid not null references public.meal_profiles(id) on delete cascade,

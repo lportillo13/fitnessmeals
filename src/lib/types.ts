@@ -112,10 +112,23 @@ export type DailyPlanMeal = {
 export type DailyPlanItem = {
   id: string;
   daily_plan_meal_id: string;
-  food_id: string;
+  food_id: string | null;
   amount: number;
   amount_mode?: "serving" | "grams" | null;
   completed?: boolean;
+  custom_food_name?: string | null;
+  custom_food_brand?: string | null;
+  custom_food_category?: Food["category"] | null;
+  custom_serving_mode?: Food["serving_mode"] | null;
+  custom_serving_label?: string | null;
+  custom_base_grams?: number | null;
+  custom_calories?: number | null;
+  custom_protein_g?: number | null;
+  custom_carbs_g?: number | null;
+  custom_fat_g?: number | null;
+  custom_fiber_g?: number | null;
+  custom_sugar_alcohol_g?: number | null;
+  custom_allulose_g?: number | null;
 };
 
 export type ProgressLog = {
