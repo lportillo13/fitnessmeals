@@ -1,7 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, CheckCircle2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Plus, RefreshCw, Save, Shuffle, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeftRight, Camera, CheckCircle2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Plus, RefreshCw, Save, ScanBarcode, Shuffle, Trash2, X } from "lucide-react";
+import {
+  Html5Qrcode,
+  Html5QrcodeSupportedFormats,
+} from "html5-qrcode";
 import { createClient } from "@/lib/supabase/client";
 import {
   buildPlanningOptions,
@@ -34,18 +38,29 @@ type PlannedMeal = DailyPlanMeal & {
   items: DailyPlanItem[];
 };
 
-type OneTimeFoodDraft = {
-  name: string;
-  category: Food["category"];
-  servingLabel: string;
-  amount: number;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-  fiber: number;
-  sugarAlcohol: number;
-  allulose: number;
+type FoodDraft = Omit<Food, "id" | "user_id" | "profile_id" | "is_public">;
+
+type OpenFoodFactsProduct = {
+  product_name?: string;
+  brands?: string;
+  serving_size?: string;
+  serving_quantity?: number;
+  nutriments?: {
+    "energy-kcal_serving"?: number;
+    "energy-kcal_100g"?: number;
+    proteins_serving?: number;
+    proteins_100g?: number;
+    carbohydrates_serving?: number;
+    carbohydrates_100g?: number;
+    fat_serving?: number;
+    fat_100g?: number;
+    fiber_serving?: number;
+    fiber_100g?: number;
+    polyols_serving?: number;
+    polyols_100g?: number;
+    allulose_serving?: number;
+    allulose_100g?: number;
+  };
 };
 
 function getTodayKey() {
@@ -95,19 +110,16 @@ export default function CalculatorPage() {
   const [manualMealSlot, setManualMealSlot] = useState<MealSlot>("breakfast");
   const [manualAmount, setManualAmount] = useState(1);
   const [manualAmountMode, setManualAmountMode] = useState<"serving" | "grams">("grams");
-  const [oneTimeFood, setOneTimeFood] = useState<OneTimeFoodDraft>({
-    name: "",
-    category: "other",
-    servingLabel: "serving",
-    amount: 1,
-    calories: 0,
-    protein: 0,
-    carbs: 0,
-    fat: 0,
-    fiber: 0,
-    sugarAlcohol: 0,
-    allulose: 0,
-  });
+  const [oneTimeBarcode, setOneTimeBarcode] = useState("");
+  const [oneTimeProductSearch, setOneTimeProductSearch] = useState("");
+  const [oneTimeLookupLoading, setOneTimeLookupLoading] = useState(false);
+  const [oneTimeSearchLoading, setOneTimeSearchLoading] = useState(false);
+  const [oneTimeProductMatches, setOneTimeProductMatches] = useState<OpenFoodFactsProduct[]>([]);
+  const [oneTimeDraftFood, setOneTimeDraftFood] = useState<FoodDraft | null>(null);
+  const [oneTimeAmount, setOneTimeAmount] = useState(1);
+  const [oneTimeAmountMode, setOneTimeAmountMode] = useState<"serving" | "grams">("serving");
+  const [showOneTimeScannerModal, setShowOneTimeScannerModal] = useState(false);
+  const [oneTimeScannerMessage, setOneTimeScannerMessage] = useState("");
   const [displayAmountMode, setDisplayAmountMode] = useState<"serving" | "grams">("grams");
   const [openMealSlot, setOpenMealSlot] = useState<MealSlot | null>("breakfast");
   const [freeDay, setFreeDay] = useState(false);
@@ -115,6 +127,8 @@ export default function CalculatorPage() {
   const [showManualAdd, setShowManualAdd] = useState(false);
   const [saveMealDraft, setSaveMealDraft] = useState<{ meal: PlannedMeal; name: string } | null>(null);
   const [motivation, setMotivation] = useState<{ message: string; tone: MotivationTone } | null>(null);
+  const oneTimeScannerRef = useRef<Html5Qrcode | null>(null);
+  const oneTimeScannerElementId = "calculator-one-time-food-barcode-reader";
   const todayKey = getTodayKey();
   const isViewingToday = selectedPlanDate === todayKey;
   const selectedPlanDateLabel = formatPlanDateLabel(selectedPlanDate);
@@ -246,6 +260,12 @@ export default function CalculatorPage() {
 
     loadSelectedPlan();
   }, [selectedProfileId, selectedPlanDate]);
+
+  useEffect(() => {
+    return () => {
+      void stopOneTimeScanner();
+    };
+  }, []);
 
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
   const options = useMemo(
@@ -674,6 +694,148 @@ export default function CalculatorPage() {
     }
   }
 
+  async function lookupOneTimeBarcode(code = oneTimeBarcode) {
+    const cleaned = code.trim();
+    if (!cleaned) {
+      setMessage("Enter or scan a barcode first.");
+      return;
+    }
+
+    setOneTimeLookupLoading(true);
+    setMessage("");
+    setOneTimeDraftFood(null);
+    setOneTimeProductMatches([]);
+
+    try {
+      const response = await fetch(
+        `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(cleaned)}.json`
+      );
+      const result = (await response.json()) as {
+        status?: number;
+        product?: OpenFoodFactsProduct;
+      };
+
+      if (!response.ok || result.status !== 1 || !result.product) {
+        setMessage("No food found for that barcode.");
+        return;
+      }
+
+      selectOneTimeProduct(result.product, "Unnamed scanned food");
+    } catch {
+      setMessage("Could not look up that barcode right now.");
+    } finally {
+      setOneTimeLookupLoading(false);
+    }
+  }
+
+  async function searchOneTimeProducts() {
+    const cleaned = oneTimeProductSearch.trim();
+    if (!cleaned) {
+      setMessage("Type a product name first.");
+      return;
+    }
+
+    setOneTimeSearchLoading(true);
+    setMessage("");
+    setOneTimeProductMatches([]);
+
+    try {
+      const response = await fetch(
+        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(cleaned)}&search_simple=1&action=process&json=1&page_size=8`
+      );
+      const result = (await response.json()) as { products?: OpenFoodFactsProduct[] };
+      const matches = (result.products || []).filter((product) => product.product_name);
+      setOneTimeProductMatches(matches);
+      if (matches.length === 0) {
+        setMessage("No products found for that name.");
+      }
+    } catch {
+      setMessage("Could not search products right now.");
+    } finally {
+      setOneTimeSearchLoading(false);
+    }
+  }
+
+  function selectOneTimeProduct(product: OpenFoodFactsProduct, fallbackName = "Unnamed searched food") {
+    const draftFood = productToFoodDraft(product, fallbackName);
+    setOneTimeDraftFood(draftFood);
+    setOneTimeAmount(1);
+    setOneTimeAmountMode(draftFood.serving_mode === "grams" ? "grams" : "serving");
+    setOneTimeProductMatches([]);
+  }
+
+  async function startOneTimeScanner() {
+    try {
+      const scanner = new Html5Qrcode(oneTimeScannerElementId, {
+        verbose: false,
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+        ],
+      });
+
+      oneTimeScannerRef.current = scanner;
+      setOneTimeScannerMessage("Point the camera at the barcode.");
+
+      await scanner.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 280, height: 140 },
+          aspectRatio: 1.777778,
+        },
+        (detectedCode) => {
+          if (!detectedCode) return;
+          setOneTimeBarcode(detectedCode);
+          setOneTimeScannerMessage(`Scanned ${detectedCode}.`);
+          void stopOneTimeScanner();
+          setShowOneTimeScannerModal(false);
+          void lookupOneTimeBarcode(detectedCode);
+        },
+        () => {
+          // Keep scanning quietly until a readable barcode appears.
+        }
+      );
+    } catch {
+      setOneTimeScannerMessage(
+        "Camera access was blocked or unavailable. You can still type the barcode below."
+      );
+      await stopOneTimeScanner();
+    }
+  }
+
+  async function stopOneTimeScanner() {
+    if (oneTimeScannerRef.current) {
+      try {
+        await oneTimeScannerRef.current.stop();
+      } catch {
+        // The scanner may already be stopped.
+      }
+
+      try {
+        await oneTimeScannerRef.current.clear();
+      } catch {
+        // Clearing an already-cleared scanner is harmless.
+      }
+    }
+
+    oneTimeScannerRef.current = null;
+  }
+
+  function openOneTimeScannerModal() {
+    setShowOneTimeScannerModal(true);
+    window.setTimeout(() => {
+      void startOneTimeScanner();
+    }, 0);
+  }
+
+  async function closeOneTimeScannerModal() {
+    await stopOneTimeScanner();
+    setShowOneTimeScannerModal(false);
+  }
+
   async function ensureManualMeal() {
     if (!selectedProfile) return null;
     const selectedManualFood = visibleFoods.find((food) => food.id === manualFoodId);
@@ -763,12 +925,16 @@ export default function CalculatorPage() {
 
   async function addOneTimeFood() {
     if (!selectedProfile) return;
-    const trimmedName = oneTimeFood.name.trim();
+    if (!oneTimeDraftFood) {
+      setMessage("Search or scan a food before adding it.");
+      return;
+    }
+    const trimmedName = oneTimeDraftFood.name.trim();
     if (!trimmedName) {
       setMessage("Add a name for the one-time food.");
       return;
     }
-    if (oneTimeFood.amount <= 0) {
+    if (oneTimeAmount <= 0) {
       setMessage("Add an amount greater than zero.");
       return;
     }
@@ -780,22 +946,22 @@ export default function CalculatorPage() {
       .insert({
         daily_plan_meal_id: meal.id,
         food_id: null,
-        amount: oneTimeFood.amount,
-        amount_mode: "serving",
+        amount: oneTimeAmount,
+        amount_mode: oneTimeAmountMode,
         completed: true,
         custom_food_name: trimmedName,
-        custom_food_brand: null,
-        custom_food_category: oneTimeFood.category,
-        custom_serving_mode: "unit",
-        custom_serving_label: oneTimeFood.servingLabel.trim() || "serving",
-        custom_base_grams: null,
-        custom_calories: oneTimeFood.calories,
-        custom_protein_g: oneTimeFood.protein,
-        custom_carbs_g: oneTimeFood.carbs,
-        custom_fat_g: oneTimeFood.fat,
-        custom_fiber_g: oneTimeFood.fiber,
-        custom_sugar_alcohol_g: oneTimeFood.sugarAlcohol,
-        custom_allulose_g: oneTimeFood.allulose,
+        custom_food_brand: oneTimeDraftFood.brand || null,
+        custom_food_category: oneTimeDraftFood.category,
+        custom_serving_mode: oneTimeDraftFood.serving_mode,
+        custom_serving_label: oneTimeDraftFood.serving_label,
+        custom_base_grams: oneTimeDraftFood.base_grams,
+        custom_calories: oneTimeDraftFood.calories,
+        custom_protein_g: oneTimeDraftFood.protein_g,
+        custom_carbs_g: oneTimeDraftFood.carbs_g,
+        custom_fat_g: oneTimeDraftFood.fat_g,
+        custom_fiber_g: oneTimeDraftFood.fiber_g,
+        custom_sugar_alcohol_g: oneTimeDraftFood.sugar_alcohol_g,
+        custom_allulose_g: oneTimeDraftFood.allulose_g,
       })
       .select("*")
       .single();
@@ -806,19 +972,11 @@ export default function CalculatorPage() {
     }
 
     const nextMeals = addItemToMealState(meal, data as DailyPlanItem);
-    setOneTimeFood((current) => ({
-      ...current,
-      name: "",
-      servingLabel: "serving",
-      amount: 1,
-      calories: 0,
-      protein: 0,
-      carbs: 0,
-      fat: 0,
-      fiber: 0,
-      sugarAlcohol: 0,
-      allulose: 0,
-    }));
+    setOneTimeDraftFood(null);
+    setOneTimeBarcode("");
+    setOneTimeProductSearch("");
+    setOneTimeAmount(1);
+    setOneTimeAmountMode("serving");
     setMessage(`${trimmedName} was added only to ${selectedPlanDateLabel}.`);
     if (!freeDay && !noRecalculate) {
       const changedIndex = plannerSlots.findIndex((slot) => slot.key === meal.meal_slot);
@@ -1139,7 +1297,7 @@ export default function CalculatorPage() {
               onClick={() => setShowManualAdd((current) => !current)}
               className="flex w-full items-center justify-between text-left"
             >
-              <h2 className="text-xl font-semibold">Add food manually</h2>
+              <h2 className="text-xl font-semibold">Add food</h2>
               {showManualAdd ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
             </button>
             {showManualAdd && (
@@ -1207,51 +1365,113 @@ export default function CalculatorPage() {
                 </div>
               ) : (
                 <div className="grid gap-3">
-                  <div className="grid gap-3 md:grid-cols-[160px_1fr_150px_150px]">
+                  <div className="grid gap-3 md:grid-cols-[160px_1fr_auto_auto]">
                     <select className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" value={manualMealSlot} onChange={(event) => setManualMealSlot(event.target.value as MealSlot)}>
                       {plannerSlots.map((slot) => <option key={slot.key} value={slot.key}>{slot.label}</option>)}
                     </select>
                     <input
                       className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
-                      placeholder="Food name"
-                      value={oneTimeFood.name}
-                      onChange={(event) => setOneTimeFood((current) => ({ ...current, name: event.target.value }))}
+                      placeholder="Type or scan barcode"
+                      value={oneTimeBarcode}
+                      onChange={(event) => setOneTimeBarcode(event.target.value)}
                     />
-                    <select
-                      className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
-                      value={oneTimeFood.category}
-                      onChange={(event) => setOneTimeFood((current) => ({ ...current, category: event.target.value as Food["category"] }))}
+                    <button
+                      type="button"
+                      onClick={() => lookupOneTimeBarcode()}
+                      disabled={oneTimeLookupLoading}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold disabled:opacity-60"
                     >
-                      {foodCategoryOptions.map((category) => (
-                        <option key={category} value={category}>{category}</option>
+                      <ScanBarcode className="h-4 w-4" />
+                      {oneTimeLookupLoading ? "Looking..." : "Find"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openOneTimeScannerModal}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                    >
+                      <Camera className="h-4 w-4" />
+                      Camera
+                    </button>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                    <input
+                      className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                      placeholder="Or search product by name"
+                      value={oneTimeProductSearch}
+                      onChange={(event) => setOneTimeProductSearch(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      onClick={searchOneTimeProducts}
+                      disabled={oneTimeSearchLoading}
+                      className="rounded-2xl bg-white/8 px-4 py-3 font-semibold disabled:opacity-60"
+                    >
+                      {oneTimeSearchLoading ? "Searching..." : "Search"}
+                    </button>
+                  </div>
+
+                  {oneTimeProductMatches.length > 0 && (
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {oneTimeProductMatches.map((product, index) => (
+                        <button
+                          key={`${product.product_name}-${product.brands || "brand"}-${index}`}
+                          type="button"
+                          onClick={() => selectOneTimeProduct(product)}
+                          className="surface-strong rounded-2xl p-3 text-left"
+                        >
+                          <div className="font-medium">{product.product_name}</div>
+                          <div className="muted text-sm">{product.brands || "Unknown brand"}</div>
+                        </button>
                       ))}
-                    </select>
-                    <input
-                      className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
-                      placeholder="Serving label"
-                      value={oneTimeFood.servingLabel}
-                      onChange={(event) => setOneTimeFood((current) => ({ ...current, servingLabel: event.target.value }))}
-                    />
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[110px_repeat(7,minmax(0,1fr))_auto]">
-                    <input
-                      className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
-                      type="number"
-                      min="0"
-                      step="0.25"
-                      placeholder="Amount"
-                      value={oneTimeFood.amount}
-                      onChange={(event) => setOneTimeFood((current) => ({ ...current, amount: Number(event.target.value) }))}
-                    />
-                    <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="1" placeholder="Cal" value={oneTimeFood.calories} onChange={(event) => setOneTimeFood((current) => ({ ...current, calories: Number(event.target.value) }))} />
-                    <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="1" placeholder="Protein" value={oneTimeFood.protein} onChange={(event) => setOneTimeFood((current) => ({ ...current, protein: Number(event.target.value) }))} />
-                    <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="1" placeholder="Carbs" value={oneTimeFood.carbs} onChange={(event) => setOneTimeFood((current) => ({ ...current, carbs: Number(event.target.value) }))} />
-                    <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="1" placeholder="Fat" value={oneTimeFood.fat} onChange={(event) => setOneTimeFood((current) => ({ ...current, fat: Number(event.target.value) }))} />
-                    <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="1" placeholder="Fiber" value={oneTimeFood.fiber} onChange={(event) => setOneTimeFood((current) => ({ ...current, fiber: Number(event.target.value) }))} />
-                    <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="1" placeholder="Sugar alc" value={oneTimeFood.sugarAlcohol} onChange={(event) => setOneTimeFood((current) => ({ ...current, sugarAlcohol: Number(event.target.value) }))} />
-                    <input className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white" type="number" min="0" step="1" placeholder="Allulose" value={oneTimeFood.allulose} onChange={(event) => setOneTimeFood((current) => ({ ...current, allulose: Number(event.target.value) }))} />
-                    <button onClick={addManualFood} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold"><Plus className="h-4 w-4" />Add</button>
-                  </div>
+                    </div>
+                  )}
+
+                  {oneTimeDraftFood && (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="grid gap-3 lg:grid-cols-[1fr_150px_110px_120px_auto] lg:items-end">
+                        <div>
+                          <h3 className="font-semibold">{oneTimeDraftFood.name}</h3>
+                          <p className="muted text-sm">
+                            {oneTimeDraftFood.brand || "Unknown brand"} · {formatServingSummary(oneTimeDraftFood)}
+                          </p>
+                          <p className="mt-2 text-sm">
+                            {roundQuantity(oneTimeDraftFood.calories)} cal · {roundQuantity(oneTimeDraftFood.protein_g)}g protein · {roundQuantity(oneTimeDraftFood.carbs_g)}g carbs · {roundQuantity(oneTimeDraftFood.fat_g)}g fat
+                          </p>
+                        </div>
+                        <select
+                          className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                          value={oneTimeDraftFood.category}
+                          onChange={(event) =>
+                            setOneTimeDraftFood((current) =>
+                              current ? { ...current, category: event.target.value as Food["category"] } : current
+                            )
+                          }
+                        >
+                          {foodCategoryOptions.map((category) => (
+                            <option key={category} value={category}>{category}</option>
+                          ))}
+                        </select>
+                        <input
+                          className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                          type="number"
+                          min="0"
+                          step={oneTimeAmountMode === "grams" ? "5" : "0.25"}
+                          value={oneTimeAmount}
+                          onChange={(event) => setOneTimeAmount(Number(event.target.value))}
+                        />
+                        <select
+                          className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white"
+                          value={oneTimeAmountMode}
+                          onChange={(event) => setOneTimeAmountMode(event.target.value as "serving" | "grams")}
+                        >
+                          <option value="serving">Serving</option>
+                          <option value="grams">Grams</option>
+                        </select>
+                        <button onClick={addManualFood} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/8 px-4 py-3 font-semibold"><Plus className="h-4 w-4" />Add</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1405,6 +1625,26 @@ export default function CalculatorPage() {
           onSave={() => void confirmSaveMealAsTemplate()}
         />
       )}
+      {showOneTimeScannerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="surface w-full max-w-lg rounded-3xl p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold">Scan one-time food</h2>
+                <p className="muted text-sm">Use the barcode to add it to this day only.</p>
+              </div>
+              <button onClick={closeOneTimeScannerModal} className="rounded-xl bg-white/6 p-2">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div
+              id={oneTimeScannerElementId}
+              className="overflow-hidden rounded-2xl border border-white/10"
+            />
+            {oneTimeScannerMessage && <p className="muted mt-3 text-sm">{oneTimeScannerMessage}</p>}
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -1427,6 +1667,86 @@ const foodCategoryOptions: Food["category"][] = [
   "drink",
   "other",
 ];
+
+const fallbackOneTimeDraft: FoodDraft = {
+  name: "",
+  brand: null,
+  category: "other",
+  serving_mode: "grams",
+  serving_label: "100 g",
+  base_grams: 100,
+  calories: 0,
+  protein_g: 0,
+  carbs_g: 0,
+  fat_g: 0,
+  fiber_g: 0,
+  sugar_alcohol_g: 0,
+  allulose_g: 0,
+  is_available: true,
+  max_amount: null,
+  allowed_meal_slots: ["breakfast", "snack_1", "lunch", "snack_2", "dinner"],
+};
+
+function productToFoodDraft(product: OpenFoodFactsProduct, fallbackName: string): FoodDraft {
+  const servingQuantity =
+    Number(product.serving_quantity) ||
+    parseServingGrams(product.serving_size) ||
+    100;
+  const hasServingMacros = product.nutriments?.["energy-kcal_serving"] != null;
+  const servingLabel = product.serving_size || (hasServingMacros ? "1 serving" : "100 g");
+
+  return {
+    ...fallbackOneTimeDraft,
+    name: product.product_name || fallbackName,
+    brand: product.brands || null,
+    serving_mode: hasServingMacros ? "unit" : "grams",
+    serving_label: hasServingMacros ? "1 serving" : servingLabel,
+    base_grams: servingQuantity || 100,
+    calories: numberOrZero(
+      hasServingMacros
+        ? product.nutriments?.["energy-kcal_serving"]
+        : product.nutriments?.["energy-kcal_100g"]
+    ),
+    protein_g: numberOrZero(
+      hasServingMacros ? product.nutriments?.proteins_serving : product.nutriments?.proteins_100g
+    ),
+    carbs_g: numberOrZero(
+      hasServingMacros
+        ? product.nutriments?.carbohydrates_serving
+        : product.nutriments?.carbohydrates_100g
+    ),
+    fat_g: numberOrZero(
+      hasServingMacros ? product.nutriments?.fat_serving : product.nutriments?.fat_100g
+    ),
+    fiber_g: numberOrZero(
+      hasServingMacros ? product.nutriments?.fiber_serving : product.nutriments?.fiber_100g
+    ),
+    sugar_alcohol_g: numberOrZero(
+      hasServingMacros ? product.nutriments?.polyols_serving : product.nutriments?.polyols_100g
+    ),
+    allulose_g: numberOrZero(
+      hasServingMacros ? product.nutriments?.allulose_serving : product.nutriments?.allulose_100g
+    ),
+  };
+}
+
+function numberOrZero(value: number | undefined) {
+  return Number.isFinite(value) ? Number(value) : 0;
+}
+
+function parseServingGrams(servingSize?: string) {
+  const match = servingSize?.match(/(\d+(?:\.\d+)?)\s*g\b/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function formatServingSummary(
+  food: Pick<FoodDraft, "serving_mode" | "serving_label" | "base_grams">
+) {
+  if (food.serving_mode === "unit" && food.base_grams) {
+    return `${food.serving_label} (${food.base_grams} g)`;
+  }
+  return food.serving_label;
+}
 
 function resolvePlanItemFood(item: DailyPlanItem, foods: Food[]) {
   if (item.food_id) {
