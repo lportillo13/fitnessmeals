@@ -97,6 +97,8 @@ export default function ProgressPage() {
       .update({
         weight_lb: weight,
         current_body_fat_percentage: bodyFat || null,
+        plan_start_date: profile.plan_start_date || getTodayKey(),
+        plan_start_weight_lb: profile.plan_start_weight_lb ?? profile.weight_lb,
       })
       .eq("id", profile.id)
       .select("*")
@@ -284,14 +286,15 @@ export default function ProgressPage() {
 
 function analyzeProgress(profile?: Profile, latestLog?: ProgressLog) {
   if (!profile || !latestLog) return null;
-  const start = new Date();
-  const goal = new Date(profile.goal_date);
+  const start = profile.plan_start_date ? parseLocalDate(profile.plan_start_date) : new Date();
+  const goal = parseLocalDate(profile.goal_date);
+  const startWeight = profile.plan_start_weight_lb ?? profile.weight_lb;
   const totalDays = Math.max(1, Math.ceil((goal.getTime() - start.getTime()) / 86400000));
   const targetLossPerDay = profile.goal_loss_lb / totalDays;
   const daysRemaining = Math.max(0, Math.ceil((goal.getTime() - Date.now()) / 86400000));
   const elapsedDays = Math.max(0, totalDays - daysRemaining);
-  const goalWeight = profile.weight_lb - profile.goal_loss_lb;
-  const expectedWeight = profile.weight_lb - targetLossPerDay * elapsedDays;
+  const goalWeight = startWeight - profile.goal_loss_lb;
+  const expectedWeight = startWeight - targetLossPerDay * elapsedDays;
   const weightGap = latestLog.weight_lb - expectedWeight;
   const status = weightGap <= 1 ? "on_track" : "needs_attention";
   return {
